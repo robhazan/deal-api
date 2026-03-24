@@ -21,6 +21,7 @@
   - [Object: Curation](#object-curation)
   - [Object: DealRevision](#object-dealrevision)
   - [Object: DealActor](#object-dealactor)
+  - [Object: DealResponse](#object-dealresponse)
 - [Status Endpoint](#receiver-endpoint)
   - [Object: BuyerSeat](#object-buyerseat)
   - [Object: BuyerStatus](#object-buyerstatus)
@@ -70,8 +71,8 @@ This API has multiple implications including lowering manual entry by making the
 ## What it is
 
 - API that provides subscribers with static information about a given Deal that outlines the tenets of the Deal.
-- This API uses a symmetric, bidirectional push model. Either party — seller (e.g., SSP) or buyer (e.g., DSP) — may initiate a deal or propose a revision by pushing to the other party's endpoint. Both parties are expected to implement both the push endpoint (to receive incoming deals and revisions) and the status endpoint (to respond to status queries). Either party may also query the other's status endpoint to retrieve the current state of a deal.
-- Version 1.1 of this API introduces support for differential overrides, allowing deal terms to be updated after initial send. It also introduces a deal revision workflow that enables sellers and buyers to propose, accept, or reject changes to deal terms over the flight of the deal. To ensure data integrity, deal receivers are encouraged to implement periodic polling as a fallback mechanism to handle any missed notifications.
+- This API supports a bidirectional push model. In its simplest form, the seller pushes deal information to the buyer's endpoint (the traditional seller-push model from v1.0). When both parties agree to support bidirectionality, either party — seller (e.g., SSP) or buyer (e.g., DSP) — may initiate a deal or propose a revision by pushing to the other party's endpoint. A seller-push-only implementation is fully compliant with this specification; bidirectional support is optional and requires mutual agreement between counterparties.
+- Version 1.1 introduces a deal revision workflow that enables sellers and buyers to propose, accept, or reject changes to deal terms over the flight of the deal. All updates to deal terms — including changes to inventory, pricing, and other metadata — flow through this revision workflow. To ensure data integrity, deal receivers are encouraged to implement periodic polling as a fallback mechanism to handle any missed notifications.
 
 <a name="what-it-isnt"></a>
 ## What it isn't
@@ -94,15 +95,14 @@ This API has multiple implications including lowering manual entry by making the
 Version 1.1 introduces the following changes from Version 1.0:
 
 - **Inventory Composition Model:** The `Inventory` object has been redesigned to support a richer, composition-based approach to describing inventory. The flat attribute model from v1.0 is replaced by five composition sub-objects — `ContentComposition`, `DeviceComposition`, `UserComposition`, `SiteComposition`, and `AppComposition` — each supporting explicit inclusion and exclusion arrays, enabling deals to be described with greater precision and expressiveness. Four sub-objects (`contentcomp`, `devicecomp`, `sitecomp`, `appcomp`) use arrays of their corresponding OpenRTB 2.6 top-level objects. `UserComposition` uses arrays of OpenRTB 2.6 Data objects (the `user.data` structure), scoped to curated audience cohort signals per the IAB Tech Lab Curated Audiences standard.
-- **Bidirectional API Model:** Version 1.1 upgrades the API from a unidirectional seller-to-buyer push to a fully symmetric, bidirectional model. Either party — seller (e.g., SSP) or buyer (e.g., DSP) — may now initiate a deal or propose a revision by pushing to the other party's endpoint. Both parties are expected to implement both the push endpoint and the status endpoint. The `Deal` object gains `sellerdealid` and `buyerdealid` fields to allow each party to maintain their own namespace identifier for a deal alongside the canonical bid-stream `id`.
-- **Differential Overrides:** Version 1.1 adds support for pushing updates to existing deals after initial send, allowing either party to communicate changes to deal terms over the flight of the deal.
-- **Deal Revision Workflow:** Version 1.1 introduces a structured revision lifecycle for deal terms. The `Deal` object gains `currentrevision`, `liverevision`, and `dealstatus` fields. The new `DealRevision` and `DealActor` objects provide a standardized mechanism for either party to propose, accept, or reject changes to deal terms, with a clear record of what was changed and by whom. The legacy `sellerstatus` field is deprecated in favor of `dealstatus`. See [Deal Revision Workflow](#deal-revision-workflow) for implementation guidance.
+- **Bidirectional API Model:** Version 1.1 extends the API to support an optional bidirectional push model. Either party — seller (e.g., SSP) or buyer (e.g., DSP) — may now initiate a deal or propose a revision by pushing to the other party's endpoint, provided both parties have agreed to support bidirectional communication. A seller-push-only implementation remains fully compliant. The `Deal` object gains `sellerdealid` and `buyerdealid` fields to allow each party to maintain their own namespace identifier for a deal alongside the canonical bid-stream `id`.
+- **Deal Revision Workflow:** Version 1.1 introduces a structured revision lifecycle for deal terms, replacing the need for ad-hoc differential overrides. All updates to deal terms — whether minor adjustments or substantive renegotiations — flow through the same revision workflow: a party proposes a revision, and the counterparty accepts or rejects it. The `Deal` object gains `currentrevision`, `liverevision`, and `dealstatus` fields. The new `DealRevision`, `DealActor`, and `DealResponse` objects provide a standardized mechanism for either party to propose, accept, or reject changes to deal terms, with a clear record of what was changed and by whom. The legacy `sellerstatus` field is deprecated in favor of `dealstatus`. See [Deal Revision Workflow](#deal-revision-workflow) for implementation guidance.
 
 ---
 
 <a name="deal-api-specification"></a>
 # Deal API Specification
-An HTTP POST endpoint implemented by each party to accept deal data pushed from the other. Because either party may initiate a deal or propose a revision, both the seller system and the buyer system are expected to implement this endpoint. Configuration of push calls — including endpoint discovery and authentication — is out of scope for this specification and is the responsibility of each implementing party.
+An HTTP POST endpoint for accepting deal data. At minimum, the buyer system must implement this endpoint to receive deals and revisions pushed by the seller (the traditional seller-push model). When both parties agree to support bidirectional communication, the seller system should also implement this endpoint to receive buyer-initiated revisions and DealResponses. Configuration of push calls — including endpoint discovery and authentication — is out of scope for this specification and is the responsibility of each implementing party.
 
 <a name="object-deal"></a>
 ## Object: Deal
@@ -112,12 +112,12 @@ An HTTP POST endpoint implemented by each party to accept deal data pushed from 
 | `id` | string; **required** | The canonical deal identifier used in OpenRTB bid requests. This is the ID that appears as `deal.id` in the bid stream and must match between buyer and seller systems for deal targeting to function. For seller-initiated deals this is assigned by the seller. For buyer-initiated deals, the buyer proposes a value but `id` is formally confirmed by the seller upon accepting the initial revision, since the seller (SSP) controls bid request construction. |
 | `sellerdealid` | string | The deal's reference identifier in the seller's system namespace. For seller-initiated deals this will typically match `id`. Included to support cases where the seller's internal ID differs from the canonical bid-stream ID. |
 | `buyerdealid` | string | The deal's reference identifier in the buyer's system namespace. Allows the buyer to maintain their own persistent link to the deal independent of the seller-assigned `id`. For buyer-initiated deals this should be populated by the buyer in the initial revision push. |
-| `name` | string, recommended | Name of the deal as created in the origin system. Note: This name may be displayed to the buyer. The person inputting the deal into the `origin` system should consider that when setting up the deal. |
-| `created` | string | UTC timestamp in seconds in ISO-8601 of when the deal was created in the Origin system |
-| `dealstatus` | int | Lifecycle status of the deal:<br> `0` = pending acceptance — deal has been sent but not yet accepted by the buyer<br> `1` = not started — deal has been accepted but the flight start date has not yet been reached<br> `2` = live — deal is active and eligible to receive bid requests<br> `3` = live, not spending — deal is live but has not received spend within an expected window<br> `4` = paused — deal has been temporarily suspended<br> `5` = completed — deal has reached its end date or delivery goal<br> `6` = expired — deal lapsed without being activated<br> `7` = canceled — deal was terminated prior to completion<br><br>See [Deal Revision Workflow](#deal-revision-workflow) for additional detail. |
+| `name` | string, recommended | Name of the deal as assigned by the initiating party. Note: This name may be displayed to the counterparty and should be chosen accordingly. |
+| `created` | string | UTC timestamp in seconds in ISO-8601 of when the deal was first created. |
+| `dealstatus` | int | Lifecycle status of the deal:<br> `0` = pending acceptance — deal has been sent but not yet accepted by the counterparty<br> `1` = not started — deal has been accepted but the flight start date has not yet been reached<br> `2` = live — deal is active and eligible to receive bid requests<br> `3` = live, not spending — deal is live but has not received spend within an expected window<br> `4` = paused — deal has been temporarily suspended<br> `5` = completed — deal has reached its end date or delivery goal<br> `6` = expired — deal lapsed without being activated<br> `7` = canceled — deal was terminated prior to completion<br><br>See [Deal Revision Workflow](#deal-revision-workflow) for additional detail. |
 | `sellerstatus` | int, default 0 | **Deprecated in v1.1.** Use `dealstatus` instead. Status of the deal in the seller's system where:<br> `0` = deal is active<br> `1` = deal is paused<br> `2` = deal is pending<br> `4` = deal is complete<br> `5` = deal is archived |
 | `currentrevision` | DealRevision object; **required** | The most recent revision of the deal, regardless of its negotiation status. Represents the latest proposed or accepted state of the deal terms. See [Object: DealRevision](#object-dealrevision) and [Deal Revision Workflow](#deal-revision-workflow) for additional detail. |
-| `liverevision` | DealRevision object | The last revision that was accepted by the buyer (`negotiationstatus=1`). Absent if no revision has yet been accepted. When `currentrevision.negotiationstatus` is PROPOSED, the delta fields in `currentrevision` represent changes relative to `liverevision`. See [Deal Revision Workflow](#deal-revision-workflow) for additional detail. |
+| `liverevision` | DealRevision object | The last revision that was accepted by the counterparty (`negotiationstatus=1`). Absent if no revision has yet been accepted. When `currentrevision.negotiationstatus` is PROPOSED, the delta fields in `currentrevision` represent changes relative to `liverevision`. See [Deal Revision Workflow](#deal-revision-workflow) for additional detail. |
 | `origin` | string, **required** | The advertising system domain of the business entity that will receive bid responses for the deal (typically the SSP running the auction). This field identifies the auction operator, not the party who initiated the deal. |
 | `seller` | string, recommended | Canonical domain of the business entity who sold the deal. This may be the same as the origin or curator, but it also could be any intermediate seller. <br><br> [See Implementation Guidance for additional detail](#origin-curator-and-seller) |
 | `desc` | string | Short description for the deal to help the receiver locate the deal once it has been sent. It is strongly recommended to keep this field to 250 characters or less. |
@@ -128,7 +128,7 @@ An HTTP POST endpoint implemented by each party to accept deal data pushed from 
 | `pubcount` | int | Indicates if there is more than one publishing company:<br> `0` = undisclosed<br> `1` = single publisher<br> `2` = multi-publisher<br>[See implementation guidance for additional detail](#publisher-count) |
 | `dinventory` | int | Indicates if the inventory for the deal is dynamic, meaning sites or applications included in the deal may update after the deal is live where:<br> `0` = undisclosed<br> `1` = inventory will NOT update once the deal goes live<br> `2` = inventory where this deal may run is updated dynamically. <br><br>[See implementation guidance for additional detail](#dynamic-inventory) |
 | `terms` | object, **required** | Terms of the deal. See [Object: Terms](#object-terms) for additional detail |
-| `inventory` | object | Information about the inventory included in the deal. For static inventory deals (`dinventory=1`), all five composition dimensions may be used. For dynamic inventory deals (`dinventory=2`), the non-site/app dimensions (`contentcomp`, `devicecomp`, `usercomp`) remain meaningful and are encouraged; `sitecomp` and `appcomp` may also be included but should generally carry `fidelity=1` unless the seller commits to keeping them current via differential overrides. <br><br>See [Object: Inventory](#object-inventory) and [Relationship to dinventory](#inventory-and-dinventory) for additional detail. |
+| `inventory` | object | Information about the inventory included in the deal. For static inventory deals (`dinventory=1`), all five composition dimensions may be used. For dynamic inventory deals (`dinventory=2`), the non-site/app dimensions (`contentcomp`, `devicecomp`, `usercomp`) remain meaningful and are encouraged; `sitecomp` and `appcomp` may also be included but should generally carry `fidelity=1` unless the seller commits to keeping them current via the revision workflow. <br><br>See [Object: Inventory](#object-inventory) and [Relationship to dinventory](#inventory-and-dinventory) for additional detail. |
 | `curation` | object | Information about the curation package if applicable. <br><br>See [Object: Curation](#object-curation) for additional detail. |
 | `ext` | object | Placeholder for deal-specific extensions |
 
@@ -175,7 +175,7 @@ Describes the content context of the inventory in terms of OpenRTB 2.6 Content o
 |-----------|------|-------------|
 | `incl` | Content object array | Array of OpenRTB 2.6 Content objects representing content contexts to be included in the deal. An empty or absent array implies no content-based inclusion constraint. |
 | `excl` | Content object array | Array of OpenRTB 2.6 Content objects representing content contexts to be excluded from the deal. An empty or absent array implies no content-based exclusion constraint. |
-| `fidelity` | integer | Indicates how comprehensively the `incl` and `excl` arrays describe the content supply associated with this deal:<br> `0` = undisclosed<br> `1` = indicative — the composition characterizes the supply but some impressions may not match all specified dimensions<br> `2` = exhaustive — the composition comprehensively describes the supply; buyers should not expect impressions outside these dimensions |
+| `fidelity` | integer | Descriptive completeness of the `incl`/`excl` arrays: `0` = undisclosed, `1` = indicative, `2` = exhaustive. See [Fidelity](#field-selection-guidance). |
 | `ext` | object | Placeholder for composition-specific extensions |
 
 ---
@@ -189,7 +189,7 @@ Describes the device profile of the inventory in terms of OpenRTB 2.6 Device obj
 |-----------|------|-------------|
 | `incl` | Device object array | Array of OpenRTB 2.6 Device objects representing device profiles to be included in the deal. An empty or absent array implies no device-based inclusion constraint. |
 | `excl` | Device object array | Array of OpenRTB 2.6 Device objects representing device profiles to be excluded from the deal. An empty or absent array implies no device-based exclusion constraint. |
-| `fidelity` | integer | Indicates how comprehensively the `incl` and `excl` arrays describe the device supply associated with this deal:<br> `0` = undisclosed<br> `1` = indicative — the composition characterizes the supply but some impressions may not match all specified dimensions<br> `2` = exhaustive — the composition comprehensively describes the supply; buyers should not expect impressions outside these dimensions |
+| `fidelity` | integer | Descriptive completeness of the `incl`/`excl` arrays: `0` = undisclosed, `1` = indicative, `2` = exhaustive. See [Fidelity](#field-selection-guidance). |
 | `ext` | object | Placeholder for composition-specific extensions |
 
 ---
@@ -207,7 +207,7 @@ Note: Consistent with the Curated Audiences standard's design principles, UserCo
 |-----------|------|-------------|
 | `incl` | Data object array | Array of OpenRTB 2.6 Data objects (per `user.data` structure) representing curated audience segments to be included in the deal. Each Data object identifies a cohort provider via `name` (provider domain), specifies a taxonomy via `ext.segtax`, and optionally enumerates target segment IDs via `segment[].id`. An empty or absent array implies no audience-based inclusion constraint. |
 | `excl` | Data object array | Array of OpenRTB 2.6 Data objects representing curated audience segments to be excluded from the deal. Structure mirrors that of `incl`. An empty or absent array implies no audience-based exclusion constraint. |
-| `fidelity` | integer | Indicates how comprehensively the `incl` and `excl` arrays describe the audience supply associated with this deal:<br> `0` = undisclosed<br> `1` = indicative — the composition characterizes the supply but some impressions may not match all specified dimensions<br> `2` = exhaustive — the composition comprehensively describes the supply; buyers should not expect impressions outside these dimensions |
+| `fidelity` | integer | Descriptive completeness of the `incl`/`excl` arrays: `0` = undisclosed, `1` = indicative, `2` = exhaustive. See [Fidelity](#field-selection-guidance). |
 | `ext` | object | Placeholder for composition-specific extensions |
 
 ---
@@ -223,7 +223,7 @@ It is strongly recommended that `incl` entries include the `publisher` object (w
 |-----------|------|-------------|
 | `incl` | Site object array | Array of OpenRTB 2.6 Site objects representing web site inventory to be included in the deal. An empty or absent array implies no site-based inclusion constraint. |
 | `excl` | Site object array | Array of OpenRTB 2.6 Site objects representing web site inventory to be excluded from the deal. An empty or absent array implies no site-based exclusion constraint. |
-| `fidelity` | integer | Indicates how comprehensively the `incl` and `excl` arrays describe the site supply associated with this deal:<br> `0` = undisclosed<br> `1` = indicative — the composition characterizes the supply but some impressions may not match all specified dimensions<br> `2` = exhaustive — the composition comprehensively describes the supply; buyers should not expect impressions outside these dimensions |
+| `fidelity` | integer | Descriptive completeness of the `incl`/`excl` arrays: `0` = undisclosed, `1` = indicative, `2` = exhaustive. See [Fidelity](#field-selection-guidance). |
 | `ext` | object | Placeholder for composition-specific extensions |
 
 ---
@@ -239,7 +239,7 @@ It is strongly recommended that `incl` entries include the `publisher` object (w
 |-----------|------|-------------|
 | `incl` | App object array | Array of OpenRTB 2.6 App objects representing application inventory to be included in the deal. An empty or absent array implies no app-based inclusion constraint. |
 | `excl` | App object array | Array of OpenRTB 2.6 App objects representing application inventory to be excluded from the deal. An empty or absent array implies no app-based exclusion constraint. |
-| `fidelity` | integer | Indicates how comprehensively the `incl` and `excl` arrays describe the app supply associated with this deal:<br> `0` = undisclosed<br> `1` = indicative — the composition characterizes the supply but some impressions may not match all specified dimensions<br> `2` = exhaustive — the composition comprehensively describes the supply; buyers should not expect impressions outside these dimensions |
+| `fidelity` | integer | Descriptive completeness of the `incl`/`excl` arrays: `0` = undisclosed, `1` = indicative, `2` = exhaustive. See [Fidelity](#field-selection-guidance). |
 | `ext` | object | Placeholder for composition-specific extensions |
 
 ---
@@ -259,22 +259,30 @@ Information about the selection and organization of inventory using technology a
 <a name="object-dealrevision"></a>
 ## Object: DealRevision
 
-A DealRevision records a single revision in the negotiation history of a deal. Each revision carries the identity of the party who made it, the negotiation status at the time, a human-readable comment, and a set of delta fields representing the deal term changes proposed by that revision.
-
-**Delta semantics:** The fields in a DealRevision represent a *delta* relative to the last accepted revision (i.e., `liverevision`), not relative to the immediately preceding proposed revision. Only fields whose values differ from the live revision need be included; absent fields imply no change along that dimension. This ensures that the meaning of any pending revision is always unambiguous, regardless of how many intermediate proposals have been made and superseded.
-
-**One-pending-at-a-time rule:** At most one revision may be in PROPOSED state at any time. When a new revision is created while a prior revision is still PROPOSED, the prior revision is automatically transitioned to SUPERSEDED. This prevents ambiguity about which proposal the buyer is acting on.
+A DealRevision records a proposed or accepted change to a deal's terms. Each revision carries the identity of the party who made it, the negotiation status, an optional comment, and a set of delta fields representing the term changes. See [Revision Semantics](#revision-semantics) for the rules governing delta interpretation, pre-acceptance full-specification requirements, and the one-pending-at-a-time constraint.
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `revisionid` | string; **required** | A UUID assigned by the initiating party that uniquely identifies this revision. Because each party generates UUIDs independently, revision IDs are guaranteed to be globally unique even when both parties propose a revision simultaneously. Parties should use `revisionid` — not position in a history array or `revisedate` — as the authoritative reference when accepting, rejecting, or superseding a specific revision. |
 | `revisedate` | string; **required** | UTC timestamp in ISO-8601 of when this revision was created. |
 | `revisedby` | DealActor object; **required** | The party who created this revision. See [Object: DealActor](#object-dealactor). |
-| `negotiationstatus` | int; **required** | The negotiation status of this revision:<br> `0` = PROPOSED — revision has been submitted and is awaiting buyer response<br> `1` = ACCEPTED — revision has been accepted by the buyer and is now the live state of the deal<br> `2` = REJECTED — revision was rejected by the buyer; `liverevision` (if any) remains the operative state<br> `3` = SUPERSEDED — revision was replaced by a newer revision before the buyer could act on it |
+| `negotiationstatus` | int; **required** | The negotiation status of this revision:<br> `0` = PROPOSED — revision has been submitted and is awaiting the counterparty's response<br> `1` = ACCEPTED — revision has been accepted by the counterparty and is now the live state of the deal<br> `2` = REJECTED — revision was rejected by the counterparty; `liverevision` (if any) remains the operative state<br> `3` = SUPERSEDED — revision was replaced by a newer revision before the counterparty could act on it |
 | `comment` | string | Optional human-readable note from the revising party describing the reason for or nature of the change. |
+| `name` | string | Delta: updated deal name. |
+| `desc` | string | Delta: updated deal description. |
+| `seller` | string | Delta: updated seller domain. |
+| `wseat` | string array | Delta: updated allowed buyer seat list. Replaces the full array (not a partial merge). |
+| `bseat` | string array | Delta: updated blocked buyer seat list. Replaces the full array (not a partial merge). |
+| `adtypes` | int array | Delta: updated supported ad creative formats. Replaces the full array. |
+| `auxdata` | int | Delta: updated auxiliary data indicator. |
+| `pubcount` | int | Delta: updated publisher count indicator. |
+| `dinventory` | int | Delta: updated dynamic inventory indicator. |
 | `terms` | object | Delta: updated Terms object. Only fields that differ from `liverevision` need be included. See [Object: Terms](#object-terms). |
 | `inventory` | object | Delta: updated Inventory object. Only fields that differ from `liverevision` need be included. See [Object: Inventory](#object-inventory). |
+| `curation` | object | Delta: updated Curation object. Only fields that differ from `liverevision` need be included. See [Object: Curation](#object-curation). |
 | `ext` | object | Placeholder for revision-specific extensions. |
+
+The following Deal-level fields are **not revisionable** and cannot be changed via the revision workflow: `id`, `sellerdealid`, `buyerdealid`, `origin`, `created`, `dealstatus`, `sellerstatus`, `currentrevision`, `liverevision`. These are structural or lifecycle fields managed by the protocol itself rather than by deal term negotiation.
 
 ---
 
@@ -285,16 +293,31 @@ Identifies the party who created a deal revision.
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `partyid` | string; **required** | Identifier for the party in the origin system's namespace (e.g., seat ID, account ID, or domain). |
+| `partyid` | string; **required** | Identifier for the party in their own system's namespace (e.g., seat ID, account ID, or domain). |
 | `contactemail` | string | Email address of the contact person at the revising party. |
 | `role` | int; **required** | The role of the revising party:<br> `0` = SELLER — revision was created by the sell-side party (e.g., SSP or curator)<br> `1` = BUYER — revision was created by the buy-side party (e.g., DSP or agency) |
 | `ext` | object | Placeholder for actor-specific extensions. |
+
+<a name="object-dealresponse"></a>
+## Object: DealResponse
+
+A DealResponse communicates a party's acceptance or rejection of a proposed revision. Unlike a DealRevision (which proposes new terms), a DealResponse acts on an existing proposal without modifying the deal terms. DealResponses are pushed to the counterparty's push endpoint using an HTTP POST, the same endpoint used for Deal pushes. Implementations should distinguish between the two message types based on the payload structure: a DealResponse contains a top-level `revisionid` and `negotiationstatus` but no deal term fields.
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `dealid` | string; **required** | The canonical deal identifier (`deal.id`) that this response pertains to. |
+| `revisionid` | string; **required** | The UUID of the DealRevision being accepted or rejected. Must match the `currentrevision.revisionid` on the receiving party's system; if it does not, the response is stale and must be discarded (see [Stale acceptance and rejection](#revision-semantics)). |
+| `negotiationstatus` | int; **required** | The responding party's verdict on the referenced revision:<br> `1` = ACCEPTED — the counterparty accepts the proposed revision; it becomes `liverevision`<br> `2` = REJECTED — the counterparty rejects the proposed revision; `liverevision` (if any) remains the operative state |
+| `respondedby` | DealActor object; **required** | The party issuing this response. See [Object: DealActor](#object-dealactor). |
+| `responsedate` | string; **required** | UTC timestamp in ISO-8601 of when this response was issued. |
+| `comment` | string | Optional human-readable note from the responding party explaining the acceptance or rejection. |
+| `ext` | object | Placeholder for response-specific extensions. |
 
 ---
 
 <a name="receiver-endpoint"></a>
 # Status Endpoint
-An HTTP GET endpoint implemented by each party that allows the other party to request current information for a specific deal. Because the API is bidirectional, both the seller system and the buyer system are expected to implement this endpoint.
+An HTTP GET endpoint for requesting current information about a specific deal. At minimum, the buyer system must implement this endpoint so the seller can query deal status. When both parties agree to support bidirectional communication, the seller system should also implement this endpoint to allow the buyer to query deal state.
 
 <a name="object-buyerseat"></a>
 ## Object: BuyerSeat
@@ -329,9 +352,9 @@ Information about the status of the deal at a seat level in the buying system.
 
 Some level of trust is required when buying any Deal ID. It is incumbent on the buyer of the deal to compare information from the Deal API with information contained in OpenRTB Bid Requests to ensure that it meets their expectations.
 
-Version 1.1 of this API introduces support for differential overrides, allowing deal terms to be updated after initial send, as well as a deal revision workflow for structured negotiation of those changes. Implementers should ensure their systems are capable of processing updates to an existing deal pushed by the origin system. The operative terms of a deal at any given time are those of the most recently accepted revision (`liverevision`). Buyers should apply targeting based on `liverevision` and should not bid on the basis of a revision that is still PROPOSED. To ensure data integrity, deal receivers are encouraged to implement periodic polling as a fallback mechanism to handle any missed notifications.
+Version 1.1 introduces a deal revision workflow that allows deal terms to be updated after initial send. Implementers should ensure their systems are capable of processing revisions to an existing deal pushed by the counterparty. The operative terms of a deal at any given time are those of the most recently accepted revision (`liverevision`). Buyers should apply targeting based on `liverevision` and should not bid on the basis of a revision that is still PROPOSED. To ensure data integrity, deal receivers are encouraged to implement periodic polling as a fallback mechanism to handle any missed notifications.
 
-The `deal.id` from both the sender and receiver should match the `deal.id` in the OpenRTB request when bidding. Implementers should use the Deal ID from the Origin system that did the PUSH.
+The canonical `deal.id` must match the `deal.id` in the OpenRTB bid request when bidding. Both parties should reference this canonical identifier regardless of which party initiated the deal or any party-specific identifiers (`sellerdealid`, `buyerdealid`) maintained in their own systems.
 
 Implementers are strongly encouraged to discuss where targeting criteria will be set. In instances where additional targeting will be applied in the receiving system, implementers should discuss potential implications to delivery if sources of targeting may differ.
 
@@ -343,11 +366,18 @@ Supply Chain validation should always be done using Object: Supply Chain from Op
 <a name="sending-and-receiving-information"></a>
 ## Sending and Receiving Information
 
-Either party may initiate a deal or propose a revision by pushing to their counterparty's push endpoint. Both the seller system and the buyer system must implement the push endpoint to receive incoming deals and revisions, and the status endpoint to respond to status queries.
+**Baseline (seller-push) model:** At minimum, the seller initiates deals and proposes revisions by pushing Deal objects to the buyer's push endpoint, and periodically polls the buyer's status endpoint to retrieve the current state of the deal. The buyer must implement the push endpoint (to receive incoming deals and revisions) and the status endpoint (to respond to queries). In this model, the buyer communicates acceptance or rejection by updating the `negotiationstatus` on `currentrevision` in the Deal object returned via the status endpoint. The seller detects the buyer's verdict on its next poll. This model does not require the seller to implement any endpoint.
 
-To send a new deal or revision, the initiating party sends an HTTP POST to their counterparty's push endpoint with the Deal object as the request body. The counterparty's response (acceptance, rejection, or counter-revision) is communicated by pushing back to the initiating party's push endpoint in turn.
+**Bidirectional model (optional):** When both parties agree to support bidirectionality, either party may initiate a deal or propose a revision by pushing to the counterparty's push endpoint, and both parties implement both the push and status endpoints. In this model, the buyer can also push DealResponse objects directly to the seller's push endpoint for faster acceptance/rejection notification, and may initiate deals or propose revisions of their own. The conflict resolution rules described in [Revision Semantics](#revision-semantics) (simultaneous proposals, stale acceptance) apply only when both parties are actively pushing.
 
-Either party may query the other's status endpoint to retrieve the current state of a deal. To ensure data integrity, implementers are encouraged to implement periodic polling as a fallback mechanism to handle any missed push notifications.
+**Push endpoint message types:** The push endpoint accepts two message types via HTTP POST:
+
+- **Deal object** — used to create a new deal or propose a revision. The Deal object contains `currentrevision` with the proposed changes.
+- **DealResponse object** — used to accept or reject an existing proposed revision. The DealResponse references the target revision by `revisionid` and communicates the verdict via `negotiationstatus`.
+
+Implementations should distinguish between the two based on the payload structure: a DealResponse has a top-level `revisionid` and `negotiationstatus` with no deal term fields; a Deal push has the full Deal object structure. A counter-revision (proposing alternative terms in response to a proposal) is communicated as a new Deal push, not as a DealResponse.
+
+To ensure data integrity, implementers are encouraged to implement periodic polling as a fallback mechanism to handle any missed push notifications.
 
 Implementers may choose to accept incoming webhooks to their API endpoints for events. Please discuss this feature and support with your chosen integration partners.
 
@@ -383,28 +413,19 @@ Where multiple DSP seats are included, per seat acceptance/rejection is on the D
 <a name="inventory-object-1"></a>
 ## Inventory Object
 
-For static inventory deals (`dinventory=1`), all five composition dimensions may be used. For dynamic inventory deals (`dinventory=2`), the non-site/app composition dimensions (`contentcomp`, `devicecomp`, `usercomp`) remain meaningful and are encouraged, as they describe the profile of the supply rather than enumerating specific properties. `sitecomp` and `appcomp` may also be included for dynamic deals — for example, to identify publishers and support advance supply authorization — but should generally carry `fidelity=1` unless the seller is prepared to keep them current via differential overrides. See [Relationship to dinventory](#inventory-and-dinventory) for the full interaction guidance.
+For static inventory deals (`dinventory=1`), all five composition dimensions may be used. For dynamic inventory deals (`dinventory=2`), the non-site/app composition dimensions (`contentcomp`, `devicecomp`, `usercomp`) remain meaningful and are encouraged, as they describe the profile of the supply rather than enumerating specific properties. `sitecomp` and `appcomp` may also be included for dynamic deals — for example, to identify publishers and support advance supply authorization — but should generally carry `fidelity=1` unless the seller is prepared to keep them current via the revision workflow. See [Relationship to dinventory](#inventory-and-dinventory) for the full interaction guidance.
 
 <a name="composition-object-design"></a>
 ### Composition Object Design
 
-The Inventory object in version 1.1 replaces the flat attribute model from version 1.0 with a composition-based model aligned to OpenRTB 2.6. Instead of enumerating specific inventory attributes directly (e.g., site domains, app bundles, device types, content categories), the v1.1 Inventory object organizes inventory description across five dimensions — Content, Device, Audience, Site, and App — each expressed using corresponding OpenRTB 2.6 object structures.
+The v1.1 Inventory object replaces the flat attribute model from v1.0 with a composition-based model aligned to OpenRTB 2.6. Five sub-objects — Content, Device, Audience, Site, and App — each use `incl`/`excl` arrays of their corresponding OpenRTB 2.6 objects to express inventory profiles at any level of granularity. The exception is `usercomp`, which uses OpenRTB 2.6 **Data** objects (the `user.data` sub-structure) rather than full User objects, consistent with the IAB Tech Lab Curated Audiences standard. See [Object: UserComposition](#object-usercomposition) for details and refer to the Curated Audiences specification for `segtax` taxonomy enumeration.
 
-This design allows deal senders to express inventory profiles at any level of granularity, from a simple single-field match (e.g., content genre) to a fully specified multi-field pattern, using the same vocabulary and semantics that buyers and sellers already use in the bid stream.
-
-Four of the five composition sub-objects (`contentcomp`, `devicecomp`, `sitecomp`, `appcomp`) use arrays of their respective top-level OpenRTB 2.6 objects (Content, Device, Site, App) as their `incl` and `excl` entries. The fifth, `usercomp`, intentionally differs: rather than using full OpenRTB 2.6 User objects, it uses arrays of OpenRTB 2.6 **Data** objects — the `user.data` sub-structure — consistent with the IAB Tech Lab Curated Audiences standard. This scoping reflects the Curated Audiences design principle that audience signals in the bid stream should be conveyed as anonymized, taxonomy-mapped cohort attributes (provider name, taxonomy reference, and segment IDs) rather than as broader user-level data. See [Object: UserComposition](#object-usercomposition) for the full field definitions, and refer to the IAB Tech Lab Curated Audiences specification for the `segtax` taxonomy enumeration and integration guidance.
-
-Each composition sub-object also carries a `fidelity` field that communicates how comprehensively the `incl` and `excl` arrays describe the deal's supply along that dimension. Because fidelity is declared per sub-object, different dimensions may carry different declarations — for example, a deal may specify an exhaustive site list while describing its content profile only indicatively. See [Field Selection Guidance](#field-selection-guidance) for details.
+Each composition sub-object also carries a `fidelity` field — see [Field Selection Guidance](#field-selection-guidance) for definition and usage.
 
 <a name="inclusion-and-exclusion-semantics"></a>
 ### Inclusion and Exclusion Semantics
 
-Each composition sub-object contains two arrays: `incl` (inclusion) and `excl` (exclusion). These arrays operate as follows:
-
-- **Inclusion (`incl`):** Inventory must match at least one entry in the `incl` array along a given composition dimension for it to be considered in scope for the deal. If the `incl` array is absent or empty, no inclusion constraint is applied along that dimension — all inventory qualifies unless excluded.
-- **Exclusion (`excl`):** Inventory that matches any entry in the `excl` array along a given composition dimension is disqualified from the deal, regardless of whether it also matches an inclusion entry.
-- **Precedence:** Exclusions take precedence over inclusions. If inventory matches both an inclusion entry and an exclusion entry, it is excluded.
-- **Omitted sub-objects:** If a composition sub-object (e.g., `devicecomp`) is absent from the Inventory object entirely, no constraint along that dimension is applied.
+Inventory must match at least one `incl` entry to qualify; matching any `excl` entry disqualifies it regardless of inclusion matches (exclusions take precedence). An absent or empty `incl` array imposes no inclusion constraint; an omitted sub-object imposes no constraint along that dimension.
 
 <a name="partial-object-matching"></a>
 ### Partial Object Matching
@@ -461,13 +482,13 @@ Because they operate on different axes, each of the four meaningful combinations
 - **`dinventory=1` + `fidelity=2`** (static supply, exhaustively described): The composition is a complete picture of the supply and that supply will not change. This is the strongest signal a seller can provide and gives buyers the highest confidence for advance targeting and validation.
 - **`dinventory=1` + `fidelity=1`** (static supply, described indicatively): The supply will not change, but the composition only approximates it. This is valid, though sellers are encouraged to upgrade to `fidelity=2` where possible — if the supply is static, a complete enumeration is in principle achievable.
 - **`dinventory=2` + `fidelity=1`** (dynamic supply, described indicatively): The supply evolves over the flight of the deal and the composition describes its general profile. This is the most common pairing for broadly curated or data-driven packages.
-- **`dinventory=2` + `fidelity=2`** (dynamic supply, exhaustively described as of send time): The composition is a complete picture of the supply *at the time the deal was sent*. Because `dinventory=2` signals that inventory may change, sellers using this combination are obligated to push composition updates via differential override whenever the supply changes materially — otherwise the `fidelity=2` declaration becomes misleading. Buyers should treat a `fidelity=2` composition on a dynamic deal as reliable only until a subsequent update arrives or until the deal flight warrants re-validation.
+- **`dinventory=2` + `fidelity=2`** (dynamic supply, exhaustively described as of send time): The composition is a complete picture of the supply *at the time the deal was sent*. Because `dinventory=2` signals that inventory may change, sellers using this combination are obligated to push composition updates via the revision workflow whenever the supply changes materially — otherwise the `fidelity=2` declaration becomes misleading. Buyers should treat a `fidelity=2` composition on a dynamic deal as reliable only until a subsequent update arrives or until the deal flight warrants re-validation.
 
 **Including the Inventory object for dynamic deals**
 
 Prior to v1.1, the Inventory object was restricted to `dinventory=1` because it consisted of specific site and app lists that only made sense for fixed supply. The v1.1 composition model changes this. Dimensions such as `contentcomp`, `devicecomp`, and `usercomp` describe the *nature and profile* of the supply rather than enumerating specific properties — and that profile is meaningful and useful regardless of whether the supply is static or dynamic. Sellers are encouraged to include these dimensions for dynamic deals to give buyers useful advance signal about the content environments, device types, and audience segments they should expect.
 
-For `sitecomp` and `appcomp` in a dynamic deal, the composition can still be valuable — for example, to identify the publisher and support supply authorization checks — but `fidelity=1` (indicative) is appropriate unless the seller is prepared to maintain an exhaustive and current list via differential overrides as inventory changes.
+For `sitecomp` and `appcomp` in a dynamic deal, the composition can still be valuable — for example, to identify the publisher and support supply authorization checks — but `fidelity=1` (indicative) is appropriate unless the seller is prepared to maintain an exhaustive and current list via the revision workflow as inventory changes.
 
 <a name="deal-revision-workflow"></a>
 ## Deal Revision Workflow
@@ -477,17 +498,17 @@ Version 1.1 introduces a structured mechanism for sellers and buyers to propose 
 <a name="revision-semantics"></a>
 ### Revision Semantics
 
-Each deal begins with an initial revision (`revisionnumber=1`) created by the seller when the deal is first pushed. Subsequent revisions are created whenever either party proposes a change to deal terms.
+Each deal begins with an initial revision created by the initiating party when the deal is first pushed. Subsequent revisions are created whenever either party proposes a change to deal terms.
 
-**Symmetric implementation:** Because the API is bidirectional, either party may create a revision. A seller-initiated revision is pushed from the seller's system to the buyer's push endpoint; a buyer-initiated revision is pushed from the buyer's system to the seller's push endpoint. Both parties must implement the push endpoint to participate in the revision workflow. See [Sending and Receiving Information](#sending-and-receiving-information) for endpoint requirements.
+**Implementation models:** The revision workflow operates under the same baseline (seller-push) and optional bidirectional models described in [Sending and Receiving Information](#sending-and-receiving-information). The conflict resolution rules below (simultaneous proposals, stale acceptance) apply only when both parties are actively pushing.
 
-**Delta relative to liverevision:** Each DealRevision's fields represent a delta relative to the last *accepted* revision — i.e., `liverevision` — not relative to the immediately preceding proposed revision. Only fields whose values differ from `liverevision` need be included in a revision's delta fields; fields absent from a `DealRevision` imply no change along that dimension. This design ensures that the meaning of any pending revision is always self-contained and unambiguous, regardless of the chain of proposals that preceded it.
+**Delta relative to liverevision:** Once a `liverevision` exists, each DealRevision's fields represent a delta relative to it — not relative to the immediately preceding proposed revision. Only fields whose values differ from `liverevision` need be included; fields absent from a `DealRevision` imply no change along that dimension. This design ensures that the meaning of any pending revision is always self-contained and unambiguous, regardless of the chain of proposals that preceded it. Before any revision has been accepted (i.e., while `liverevision` is absent), every proposed revision must be a full specification of the deal terms, since there is no baseline to compute a delta against.
 
 **One pending revision at a time:** At most one revision may be in PROPOSED state (`negotiationstatus=0`) at any time. If a new revision is created while an existing revision is still PROPOSED, the existing revision is automatically transitioned to SUPERSEDED (`negotiationstatus=3`) before the new revision is recorded. A party may only act on `currentrevision`; a revision with `negotiationstatus=3` is non-actionable.
 
 **Simultaneous proposals (conflict resolution):** Because either party may initiate a revision, both may push a new PROPOSED revision before receiving the other's push. When a party receives an incoming PROPOSED revision while they also have an outstanding PROPOSED revision, the seller's revision takes precedence: the buyer's PROPOSED revision transitions to SUPERSEDED, and the seller's revision becomes `currentrevision` on both systems. Both parties independently apply this rule — because UUIDs are used as revision identifiers rather than sequential integers, each party can identify which revision is whose and converge to the same outcome without coordination.
 
-**Stale acceptance and rejection:** Any acceptance (`negotiationstatus=1`) or rejection (`negotiationstatus=2`) pushed by a party must reference the `revisionid` of the revision being acted upon. Upon receiving a response, the receiving party must validate that the referenced `revisionid` matches their current `currentrevision.revisionid`. If the IDs do not match — because the revision has since been superseded — the response is invalid and must be discarded. The responding party should re-evaluate `currentrevision` and respond to the correct revision.
+**Stale acceptance and rejection:** Any DealResponse pushed by a party must reference the `revisionid` of the revision being acted upon. Upon receiving a DealResponse, the receiving party must validate that the referenced `revisionid` matches their current `currentrevision.revisionid`. If the IDs do not match — because the revision has since been superseded — the DealResponse is stale and must be discarded. The responding party should re-evaluate `currentrevision` and respond to the correct revision. See [Object: DealResponse](#object-dealresponse) for the message format.
 
 <a name="negotiation-and-deal-lifecycle"></a>
 ### Negotiation and Deal Lifecycle
@@ -501,7 +522,7 @@ Each deal begins with an initial revision (`revisionnumber=1`) created by the se
 
 **`dealstatus`** (on Deal) tracks the overall lifecycle of the deal, independent of any individual revision's negotiation outcome:
 
-- `0` PENDING_ACCEPTANCE: Deal has been sent but buyer has not yet accepted.
+- `0` PENDING_ACCEPTANCE: Deal has been proposed but the counterparty has not yet accepted.
 - `1` NOT_STARTED: Deal has been accepted but the flight start date has not yet been reached.
 - `2` LIVE: Deal is active and eligible to receive bid requests.
 - `3` LIVE_NOT_SPENDING: Deal is live but has not received spend within an expected window.
@@ -510,12 +531,40 @@ Each deal begins with an initial revision (`revisionnumber=1`) created by the se
 - `6` EXPIRED: Deal lapsed without being activated.
 - `7` CANCELED: Deal was terminated prior to completion.
 
+**`dealstatus` transitions:** The following table defines the valid state transitions, their triggers, and which party is authorized to initiate each transition. Three states — COMPLETED, EXPIRED, and CANCELED — are terminal; no outgoing transitions are permitted. To reactivate a canceled deal, the parties should create a new deal.
+
+| From | To | Trigger | Initiated by |
+|---|---|---|---|
+| PENDING_ACCEPTANCE (0) | NOT_STARTED (1) | Counterparty accepts initial revision | Automatic (revision workflow) |
+| PENDING_ACCEPTANCE (0) | CANCELED (7) | Party withdraws before acceptance | Either party |
+| NOT_STARTED (1) | LIVE (2) | Flight date begins or seller activates | Seller or automatic |
+| NOT_STARTED (1) | EXPIRED (6) | End date passes before activation | Automatic |
+| NOT_STARTED (1) | CANCELED (7) | Party cancels before deal goes live | Either party |
+| LIVE (2) | LIVE_NOT_SPENDING (3) | No spend observed during active flight | Seller (diagnostic) |
+| LIVE (2) | PAUSED (4) | Explicit pause | Either party |
+| LIVE (2) | COMPLETED (5) | Flight ends or delivery goal met | Automatic |
+| LIVE (2) | EXPIRED (6) | End date passes | Automatic |
+| LIVE (2) | CANCELED (7) | Party cancels mid-flight | Either party |
+| LIVE_NOT_SPENDING (3) | LIVE (2) | Spending resumes | Seller (diagnostic) |
+| LIVE_NOT_SPENDING (3) | PAUSED (4) | Explicit pause | Either party |
+| LIVE_NOT_SPENDING (3) | COMPLETED (5) | Flight ends | Automatic |
+| LIVE_NOT_SPENDING (3) | EXPIRED (6) | End date passes | Automatic |
+| LIVE_NOT_SPENDING (3) | CANCELED (7) | Party cancels | Either party |
+| PAUSED (4) | LIVE (2) | Deal resumed | Either party |
+| PAUSED (4) | COMPLETED (5) | Flight ends while paused | Automatic |
+| PAUSED (4) | EXPIRED (6) | End date passes while paused | Automatic |
+| PAUSED (4) | CANCELED (7) | Party cancels while paused | Either party |
+
+Proposing a revision on a deal that is already LIVE, PAUSED, or LIVE_NOT_SPENDING does **not** change `dealstatus`. The deal continues to operate under `liverevision` terms while `currentrevision` is pending. `dealstatus` reflects the operational state of the deal; `negotiationstatus` on `currentrevision` independently tracks whether a proposed change has been accepted.
+
 **Relationship to `sellerstatus`:** The `sellerstatus` field from v1.0 is deprecated in v1.1. Sellers should use `dealstatus` to communicate the lifecycle state of a deal going forward. `sellerstatus` may be included for backward compatibility with receivers that have not yet migrated but should not be the primary mechanism for communicating deal status.
+
+**Relationship to `BuyerStatus.status`:** The `dealstatus` field on the Deal object and the `status` field on the BuyerStatus object serve different purposes and operate at different levels of granularity. `dealstatus` reflects the shared, agreed-upon lifecycle state of the deal relationship — is the deal pending, live, completed, or canceled? `BuyerStatus.status` reflects the per-seat operational state of the deal within the buyer's system — has the trader approved it, is it in a campaign, is it actively spending? These two statuses are independent. A deal may be `dealstatus=2` (LIVE) while a particular buyer seat has `BuyerStatus.status=5` (paused) — this is not contradictory; it means the deal is active but that specific seat has paused its campaign against it. Implementers should not attempt to reconcile these statuses into a single value.
 
 <a name="full-history-query-parameter"></a>
 ### `full_history` Query Parameter
 
-By default, the Deal API returns only `currentrevision` and `liverevision` on the Deal object. When the receiving system's query endpoint supports it, the origin system may append `full_history=1` to the query parameters to request the complete ordered array of all prior revisions for the deal. This allows buyers to audit the full negotiation history — including all PROPOSED, REJECTED, and SUPERSEDED revisions — when needed for dispute resolution or deal analysis. Receivers are not required to retain or serve full revision history, but are encouraged to do so.
+By default, the Deal API returns only `currentrevision` and `liverevision` on the Deal object. When the counterparty's status endpoint supports it, either party may append `full_history=1` to the query parameters to request the complete ordered array of all prior revisions for the deal. This allows either party to audit the full negotiation history — including all PROPOSED, REJECTED, and SUPERSEDED revisions — when needed for dispute resolution or deal analysis. Implementations are not required to retain or serve full revision history, but are encouraged to do so.
 
 <a name="example-workflow"></a>
 ### Example Workflow
@@ -524,17 +573,17 @@ The following illustrates a typical revision lifecycle. Revision labels (Revisio
 
 1. **Seller creates the deal.** Seller pushes a Deal object with `currentrevision` set to a new DealRevision (`revisionid=<uuid-A>`, `negotiationstatus=0` PROPOSED, `revisedby.role=0` SELLER). `liverevision` is absent. `dealstatus=0` (PENDING_ACCEPTANCE).
 
-2. **Buyer accepts.** The buyer pushes an acceptance referencing `revisionid=<uuid-A>`. The seller validates that `<uuid-A>` matches `currentrevision.revisionid`. `negotiationstatus` on Revision 1 transitions to `1` (ACCEPTED). `liverevision` is set to Revision 1. `dealstatus` transitions to `1` (NOT_STARTED) or `2` (LIVE) depending on flight dates.
+2. **Buyer accepts.** The buyer pushes a DealResponse with `dealid=<deal-id>`, `revisionid=<uuid-A>`, `negotiationstatus=1` (ACCEPTED), and `respondedby.role=1` (BUYER). The seller validates that `<uuid-A>` matches `currentrevision.revisionid`. `negotiationstatus` on Revision 1 transitions to `1` (ACCEPTED). `liverevision` is set to Revision 1. `dealstatus` transitions to `1` (NOT_STARTED) or `2` (LIVE) depending on flight dates.
 
 3. **Seller proposes a price change.** Seller creates a new DealRevision (`revisionid=<uuid-B>`, `negotiationstatus=0` PROPOSED, `revisedby.role=0` SELLER) with a `terms` delta containing only the fields that changed from Revision 1. `currentrevision` points to Revision 2. `liverevision` still points to Revision 1.
 
 4. **Seller supersedes their own proposal.** Before the buyer responds, the seller creates Revision 3 (`revisionid=<uuid-C>`). Revision 2 (`<uuid-B>`) transitions to SUPERSEDED. `currentrevision` points to Revision 3. Any acceptance referencing `<uuid-B>` would be rejected as stale.
 
-5. **Buyer rejects Revision 3.** Buyer pushes a rejection referencing `revisionid=<uuid-C>`. `negotiationstatus` on Revision 3 transitions to `2` (REJECTED). `liverevision` remains Revision 1.
+5. **Buyer rejects Revision 3.** Buyer pushes a DealResponse with `revisionid=<uuid-C>` and `negotiationstatus=2` (REJECTED). `negotiationstatus` on Revision 3 transitions to `2` (REJECTED). `liverevision` remains Revision 1.
 
 6. **Buyer proposes a counter-offer.** Buyer creates Revision 4 (`revisionid=<uuid-D>`, `revisedby.role=1` BUYER) and pushes it to the seller's push endpoint. `currentrevision` points to Revision 4. `negotiationstatus=0` (PROPOSED).
 
-7. **Seller accepts.** Seller pushes an acceptance referencing `revisionid=<uuid-D>`. `negotiationstatus` on Revision 4 transitions to `1` (ACCEPTED). `liverevision` is updated to Revision 4. The deal's operative terms are now those of Revision 4 relative to Revision 1.
+7. **Seller accepts.** Seller pushes a DealResponse with `revisionid=<uuid-D>` and `negotiationstatus=1` (ACCEPTED). `negotiationstatus` on Revision 4 transitions to `1` (ACCEPTED). `liverevision` is updated to Revision 4. The deal's operative terms are now those of Revision 4 relative to Revision 1.
 
 <a name="price-and-floor-guidance"></a>
 ## Price and Floor Guidance
@@ -544,7 +593,7 @@ Historically deals have been negotiated at agreed upon rates to guarantee delive
 <a name="origin-curator-and-seller"></a>
 ## Origin, Curator, and Seller
 
-The `origin` attribute refers to the system with the UI where the deal is first input. This will typically be an SSP.
+The `origin` attribute identifies the advertising system that will receive bid responses for the deal — typically the SSP running the auction. This field identifies the auction operator, not necessarily the party who initiated the deal. In a buyer-initiated deal, `origin` still refers to the SSP that will conduct the auction.
 
 The `curator` attribute names the business entity that did the packaging of inventory, technology and/or data. Most often, although not always, this will be the party that sold the deal to the buyer.
 
@@ -575,12 +624,12 @@ In this case the `seller`=publishercompany.com, the `curator`=datacompany.com, a
 <a name="curation-fee"></a>
 ### Curation Fee
 
-`curationfee` provides information about the type of fee being applied in the bidstream, but not what that fee is. For example, if a curator is charging a CPM of $5, the `curationfee` will equal 3 because it is a CPM. If a curator is charging a flat fee of $100, the value sent in the `curationfee` attribute will be 2, because it is a flat fee. If the curator is packaging their data alongside the inventory and not taking a specific fee for the Curation service itself, the value will be 4 for no fee.
+`curfeetype` provides information about the type of fee being applied in the bidstream, but not what that fee is. For example, if a curator is charging a CPM of $5, the `curfeetype` will equal 3 because it is a CPM. If a curator is charging a flat fee of $100, the value sent in the `curfeetype` attribute will be 2, because it is a flat fee. If the curator is packaging their data alongside the inventory and not taking a specific fee for the Curation service itself, the value will be 4 for no fee.
 
 <a name="example-scenarios"></a>
 ## Example Scenarios
 
-| Scenario | curationfee | auxdata | pubcount | dinventory |
+| Scenario | curfeetype | auxdata | pubcount | dinventory |
 |----------|:-----------:|:-------:|:--------:|:----------:|
 | Publisher packages their O&O inventory and data, and sells a deal to a buyer. No other party is or will be involved in the deal and the inventory will remain static throughout the term of the deal. | 4 | 3 | 1 | 1 |
 | Data company packages their data across multiple publishers, but does not charge a fee for the specific curation service. Data providers will not be changed, but inventory may be updated after the start of the deal. | 4 | 1 | 2 | 2 |

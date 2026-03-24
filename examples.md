@@ -17,7 +17,7 @@
 <a name="scenario-1-saleshouse-audience-deal-across-multiple-web-publishers"></a>
 ## Scenario 1: Saleshouse Audience Deal Across Multiple Web Publishers
 
-A technical saleshouse (PremiumWeb Group, `premiumwebgroup.com`) represents three web publishers and packages their combined inventory against an in-market auto intender audience defined using IAB Audience Taxonomy 1.1 signals. The deal covers banner and outstream video creatives. Because the saleshouse may adjust its publisher roster over the flight, inventory is dynamic (`dinventory=2`). The saleshouse charges a CPM curation fee for the audience service.
+A technical saleshouse (PremiumWeb Group, `premiumwebgroup.com`) represents three cooking and recipe web publishers and packages their combined inventory against an in-market auto intender audience defined using IAB Audience Taxonomy 1.1 signals. The deal covers banner and outstream video creatives. Because the saleshouse may adjust its publisher roster over the flight, inventory is dynamic (`dinventory=2`). The saleshouse charges a CPM curation fee for the audience service.
 
 This scenario uses the **baseline seller-push model**: the saleshouse pushes the deal to the buyer's endpoint, then polls the buyer's status endpoint to learn when the buyer has accepted. The buyer does not implement a push endpoint — they communicate acceptance by updating the deal state on their side, which the seller discovers on its next poll.
 
@@ -41,7 +41,7 @@ Content-Type: application/json
   "id": "deal-web-auto-q2-001",
   "sellerdealid": "PWG-2026-AUTO-887",
   "name": "Q2 2026 In-Market Auto Intenders — Web",
-  "desc": "Multi-publisher web deal targeting in-market auto intenders via IAB Audience Taxonomy signals. Banner and outstream video. Publisher roster subject to change over flight.",
+  "desc": "Multi-publisher web deal targeting in-market auto intenders via IAB Audience Taxonomy signals, served across cooking and recipe publisher inventory. Banner and outstream video. Publisher roster subject to change over flight.",
   "origin": "adxchange.io",
   "seller": "premiumwebgroup.com",
   "created": "2026-03-24T08:00:00Z",
@@ -60,7 +60,7 @@ Content-Type: application/json
       "role": 0
     },
     "negotiationstatus": 0,
-    "comment": "Initial proposal. Audience defined via IAB Audience Taxonomy 1.1 in-market auto segments across three publisher properties. Publisher list subject to change; content and device dimensions are indicative.",
+    "comment": "Initial proposal. Audience defined via IAB Audience Taxonomy 1.1 in-market auto intender segments, overlaid on cooking and recipe publisher inventory. Publisher list subject to change; content and device dimensions are indicative.",
     "adtypes": [1, 2],
     "auxdata": 2,
     "pubcount": 2,
@@ -119,30 +119,30 @@ Content-Type: application/json
         "fidelity": 1,
         "incl": [
           {
-            "domain": "autolifemedia.com",
-            "cat": ["IAB2"],
+            "domain": "therecipehub.com",
+            "cat": ["IAB8"],
             "publisher": {
-              "id": "pub-alm-001",
-              "name": "AutoLife Media",
-              "domain": "autolifemedia.com"
+              "id": "pub-trh-001",
+              "name": "The Recipe Hub",
+              "domain": "therecipehub.com"
             }
           },
           {
-            "domain": "familywheels.com",
-            "cat": ["IAB2", "IAB25-2"],
+            "domain": "homechefweekly.com",
+            "cat": ["IAB8", "IAB8-12"],
             "publisher": {
-              "id": "pub-fw-001",
-              "name": "Family Wheels",
-              "domain": "familywheels.com"
+              "id": "pub-hcw-001",
+              "name": "Home Chef Weekly",
+              "domain": "homechefweekly.com"
             }
           },
           {
-            "domain": "consumerfirst.com",
-            "cat": ["IAB2", "IAB22"],
+            "domain": "mealinspo.com",
+            "cat": ["IAB8", "IAB8-8"],
             "publisher": {
-              "id": "pub-cf-001",
-              "name": "ConsumerFirst",
-              "domain": "consumerfirst.com"
+              "id": "pub-mi-001",
+              "name": "Meal Inspo",
+              "domain": "mealinspo.com"
             }
           }
         ]
@@ -171,7 +171,7 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
   "id": "deal-web-auto-q2-001",
   "sellerdealid": "PWG-2026-AUTO-887",
   "name": "Q2 2026 In-Market Auto Intenders — Web",
-  "desc": "Multi-publisher web deal targeting in-market auto intenders via IAB Audience Taxonomy signals. Banner and outstream video. Publisher roster subject to change over flight.",
+  "desc": "Multi-publisher web deal targeting in-market auto intenders via IAB Audience Taxonomy signals, served across cooking and recipe publisher inventory. Banner and outstream video. Publisher roster subject to change over flight.",
   "origin": "adxchange.io",
   "seller": "premiumwebgroup.com",
   "created": "2026-03-24T08:00:00Z",
@@ -239,30 +239,30 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
       "fidelity": 1,
       "incl": [
         {
-          "domain": "autolifemedia.com",
-          "cat": ["IAB2"],
+          "domain": "therecipehub.com",
+          "cat": ["IAB8"],
           "publisher": {
-            "id": "pub-alm-001",
-            "name": "AutoLife Media",
-            "domain": "autolifemedia.com"
+            "id": "pub-trh-001",
+            "name": "The Recipe Hub",
+            "domain": "therecipehub.com"
           }
         },
         {
-          "domain": "familywheels.com",
-          "cat": ["IAB2", "IAB25-2"],
+          "domain": "homechefweekly.com",
+          "cat": ["IAB8", "IAB8-12"],
           "publisher": {
-            "id": "pub-fw-001",
-            "name": "Family Wheels",
-            "domain": "familywheels.com"
+            "id": "pub-hcw-001",
+            "name": "Home Chef Weekly",
+            "domain": "homechefweekly.com"
           }
         },
         {
-          "domain": "consumerfirst.com",
-          "cat": ["IAB2", "IAB22"],
+          "domain": "mealinspo.com",
+          "cat": ["IAB8", "IAB8-8"],
           "publisher": {
-            "id": "pub-cf-001",
-            "name": "ConsumerFirst",
-            "domain": "consumerfirst.com"
+            "id": "pub-mi-001",
+            "name": "Meal Inspo",
+            "domain": "mealinspo.com"
           }
         }
       ]
@@ -277,7 +277,7 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
       "role": 0
     },
     "negotiationstatus": 1,
-    "comment": "Initial proposal. Audience defined via IAB Audience Taxonomy 1.1 in-market auto segments across three publisher properties. Publisher list subject to change; content and device dimensions are indicative."
+    "comment": "Initial proposal. Audience defined via IAB Audience Taxonomy 1.1 in-market auto intender segments, overlaid on cooking and recipe publisher inventory. Publisher list subject to change; content and device dimensions are indicative."
   }
 }
 ```

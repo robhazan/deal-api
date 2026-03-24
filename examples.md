@@ -120,7 +120,6 @@ Content-Type: application/json
         "incl": [
           {
             "domain": "autolifemedia.com",
-            "inventorypartnerdomain": "autolifemedia.com",
             "cat": ["IAB2"],
             "publisher": {
               "id": "pub-alm-001",
@@ -130,7 +129,6 @@ Content-Type: application/json
           },
           {
             "domain": "familywheels.com",
-            "inventorypartnerdomain": "familywheels.com",
             "cat": ["IAB2", "IAB25-2"],
             "publisher": {
               "id": "pub-fw-001",
@@ -140,7 +138,6 @@ Content-Type: application/json
           },
           {
             "domain": "consumerfirst.com",
-            "inventorypartnerdomain": "consumerfirst.com",
             "cat": ["IAB2", "IAB22"],
             "publisher": {
               "id": "pub-cf-001",
@@ -243,7 +240,6 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
       "incl": [
         {
           "domain": "autolifemedia.com",
-          "inventorypartnerdomain": "autolifemedia.com",
           "cat": ["IAB2"],
           "publisher": {
             "id": "pub-alm-001",
@@ -253,7 +249,6 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
         },
         {
           "domain": "familywheels.com",
-          "inventorypartnerdomain": "familywheels.com",
           "cat": ["IAB2", "IAB25-2"],
           "publisher": {
             "id": "pub-fw-001",
@@ -263,7 +258,6 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
         },
         {
           "domain": "consumerfirst.com",
-          "inventorypartnerdomain": "consumerfirst.com",
           "cat": ["IAB2", "IAB22"],
           "publisher": {
             "id": "pub-cf-001",

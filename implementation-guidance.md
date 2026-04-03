@@ -149,14 +149,12 @@ Where multiple DSP seats are included, per seat acceptance/rejection is on the D
 <a name="inventory-object"></a>
 ## Inventory Object
 
-For static inventory deals (`dinventory=1`), all five composition dimensions may be used. For dynamic inventory deals (`dinventory=2`), the non-site/app composition dimensions (`contentcomp`, `devicecomp`, `usercomp`) remain meaningful and are encouraged, as they describe the profile of the supply rather than enumerating specific properties. `sitecomp` and `appcomp` may also be included for dynamic deals — for example, to identify publishers and support advance supply authorization — but should generally carry `fidelity=1` unless the seller is prepared to keep them current via the revision workflow. See [Relationship to dinventory](#inventory-and-dinventory) for the full interaction guidance.
+Composition sub-objects should only include dimensions that are shared across all bid requests associated with the deal. For static inventory deals (`dinventory=1`), all five composition dimensions may be used. For dynamic inventory deals (`dinventory=2`), the non-site/app composition dimensions (`contentcomp`, `devicecomp`, `usercomp`) remain meaningful and are encouraged, as they describe the profile of the supply rather than enumerating specific properties. `sitecomp` and `appcomp` may also be included for dynamic deals — for example, to identify publishers and support advance supply authorization — but the seller should keep them current via the revision workflow as inventory changes. See [Relationship to dinventory](#inventory-and-dinventory) for the full interaction guidance.
 
 <a name="composition-object-design"></a>
 ### Composition Object Design
 
 The v1.1 Inventory object replaces the flat attribute model from v1.0 with a composition-based model aligned to OpenRTB 2.6. Five sub-objects — Content, Device, Audience, Site, and App — each use `incl`/`excl` arrays of their corresponding OpenRTB 2.6 objects to express inventory profiles at any level of granularity. The exception is `usercomp`, which uses OpenRTB 2.6 **Data** objects (the `user.data` sub-structure) rather than full User objects, consistent with the IAB Tech Lab Curated Audiences standard. See [Object: UserComposition](deal1.1.md#object-usercomposition) for details and refer to the Curated Audiences specification for `segtax` taxonomy enumeration.
-
-Each composition sub-object also carries a `fidelity` field — see [Field Selection Guidance](#field-selection-guidance) for definition and usage.
 
 <a name="inclusion-and-exclusion-semantics"></a>
 ### Inclusion and Exclusion Semantics
@@ -175,18 +173,9 @@ Implementers are encouraged to keep composition entries as concise as possible, 
 <a name="field-selection-guidance"></a>
 ### Field Selection Guidance
 
-Composition objects are intended to characterize the nature of the supply across the deal as a whole — not to enumerate every possible value a field might take on a given impression. When deciding which fields to populate in a composition entry, the guiding question is: "Is this characteristic expected to hold across all (or nearly all) impression opportunities in this deal?" If so, it is a good candidate. If the value is transient, per-impression, or user-session specific, it is not appropriate here.
+Composition objects should only list dimensions that are shared across all bid requests associated with the deal. When deciding which fields to populate in a composition entry, the guiding question is: "Is this characteristic expected to hold across all impression opportunities in this deal?" If so, it is a good candidate. If the value is transient, per-impression, or user-session specific, it is not appropriate here. Buyers should expect that all impressions delivered on the deal will match the specified dimensions.
 
 The following guidance applies to each composition sub-object.
-
-**Fidelity**
-
-Each composition sub-object carries a `fidelity` field that communicates how comprehensively its `incl` and `excl` arrays describe the deal's supply along that dimension:
-
-- `fidelity = 1` (indicative): The composition characterizes the general shape of the supply but should not be taken as a complete picture. Some impressions delivered on the deal may not match all specified dimensions. This is appropriate when the seller can describe the dominant characteristics of the supply but cannot enumerate every variation that may appear — for example, a content profile describing the prevailing genre and language of a broadly curated package.
-- `fidelity = 2` (exhaustive): The composition comprehensively describes the supply. Buyers should not expect impressions that fall outside the specified dimensions. This is appropriate when the seller can enumerate the full set of properties, applications, or audience segments covered by the deal — for example, a fixed list of owned-and-operated sites.
-
-Because `fidelity` is declared per composition sub-object, different dimensions within the same deal may carry different declarations. A deal might warrant `sitecomp.fidelity = 2` (the site list is complete and will not change) while setting `contentcomp.fidelity = 1` (the content profile is representative but not exhaustive). Buyers should evaluate each dimension's fidelity independently when deciding how to apply the composition signals for targeting and validation.
 
 **ContentComposition**
 
@@ -209,22 +198,17 @@ It is strongly recommended that `incl` entries within `sitecomp` and `appcomp` i
 <a name="inventory-and-dinventory"></a>
 ### Relationship to `dinventory`
 
-The `dinventory` field on the Deal object and the `fidelity` field on each composition sub-object describe different aspects of the deal's supply and are complementary rather than redundant.
+The `dinventory` field on the Deal object is a forward-looking statement about **temporal stability**: will the set of sites and applications included in this deal change after it goes live? Because composition sub-objects should only list dimensions shared across all bid requests, `dinventory` determines how that guarantee interacts with change over time.
 
-`dinventory` is a forward-looking statement about **temporal stability**: will the set of sites and applications included in this deal change after it goes live? `fidelity` is a statement about **descriptive completeness**: how faithfully do the composition objects describe the supply as of the time the deal was sent?
+For static deals (`dinventory=1`), the composition is a complete and stable picture of the supply — it will not change over the flight. This gives buyers the highest confidence for advance targeting and validation.
 
-Because they operate on different axes, each of the four meaningful combinations carries distinct implications:
-
-- **`dinventory=1` + `fidelity=2`** (static supply, exhaustively described): The composition is a complete picture of the supply and that supply will not change. This is the strongest signal a seller can provide and gives buyers the highest confidence for advance targeting and validation.
-- **`dinventory=1` + `fidelity=1`** (static supply, described indicatively): The supply will not change, but the composition only approximates it. This is valid, though sellers are encouraged to upgrade to `fidelity=2` where possible — if the supply is static, a complete enumeration is in principle achievable.
-- **`dinventory=2` + `fidelity=1`** (dynamic supply, described indicatively): The supply evolves over the flight of the deal and the composition describes its general profile. This is the most common pairing for broadly curated or data-driven packages.
-- **`dinventory=2` + `fidelity=2`** (dynamic supply, exhaustively described as of send time): The composition is a complete picture of the supply *at the time the deal was sent*. Because `dinventory=2` signals that inventory may change, sellers using this combination are obligated to push composition updates via the revision workflow whenever the supply changes materially — otherwise the `fidelity=2` declaration becomes misleading. Buyers should treat a `fidelity=2` composition on a dynamic deal as reliable only until a subsequent update arrives or until the deal flight warrants re-validation.
+For dynamic deals (`dinventory=2`), the composition describes the supply as of the time the deal was sent, but the underlying inventory may evolve. Sellers using dynamic inventory are obligated to push composition updates via the revision workflow whenever the supply changes materially — otherwise the composition becomes stale.
 
 **Including the Inventory object for dynamic deals**
 
 Prior to v1.1, the Inventory object was restricted to `dinventory=1` because it consisted of specific site and app lists that only made sense for fixed supply. The v1.1 composition model changes this. Dimensions such as `contentcomp`, `devicecomp`, and `usercomp` describe the *nature and profile* of the supply rather than enumerating specific properties — and that profile is meaningful and useful regardless of whether the supply is static or dynamic. Sellers are encouraged to include these dimensions for dynamic deals to give buyers useful advance signal about the content environments, device types, and audience segments they should expect.
 
-For `sitecomp` and `appcomp` in a dynamic deal, the composition can still be valuable — for example, to identify the publisher and support supply authorization checks — but `fidelity=1` (indicative) is appropriate unless the seller is prepared to maintain an exhaustive and current list via the revision workflow as inventory changes.
+For `sitecomp` and `appcomp` in a dynamic deal, the composition can still be valuable — for example, to identify the publisher and support supply authorization checks — but the seller should keep them current via the revision workflow as inventory changes.
 
 <a name="deal-revision-workflow"></a>
 ## Deal Revision Workflow

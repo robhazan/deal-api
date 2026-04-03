@@ -102,7 +102,7 @@ The Deal API supports two operations: **POST** for pushing deal data (new deals,
 | `pubcount` | int | Indicates if there is more than one publishing company:<br> `0` = undisclosed<br> `1` = single publisher<br> `2` = multi-publisher<br>[See implementation guidance for additional detail](implementation-guidance.md#publisher-count) |
 | `dinventory` | int | Indicates if the inventory for the deal is dynamic, meaning sites or applications included in the deal may update after the deal is live where:<br> `0` = undisclosed<br> `1` = inventory will NOT update once the deal goes live<br> `2` = inventory where this deal may run is updated dynamically. <br><br>[See implementation guidance for additional detail](implementation-guidance.md#dynamic-inventory) |
 | `terms` | object | Terms of the deal, reflecting the current live state (i.e., the terms from `liverevision`). **Required when `liverevision` is present.** May be omitted on initial push when no revision has yet been accepted, in which case receivers should derive the deal terms from `currentrevision`. See [Object: Terms](#object-terms) for additional detail. |
-| `inventory` | object | Information about the inventory included in the deal, reflecting the current live state. **Required when `liverevision` is present.** May be omitted on initial push when no revision has yet been accepted, in which case receivers should derive the inventory from `currentrevision`. For static inventory deals (`dinventory=1`), all five composition dimensions may be used. For dynamic inventory deals (`dinventory=2`), the non-site/app dimensions (`contentcomp`, `devicecomp`, `usercomp`) remain meaningful and are encouraged; `sitecomp` and `appcomp` may also be included but should generally carry `fidelity=1` unless the seller commits to keeping them current via the revision workflow. <br><br>See [Object: Inventory](#object-inventory) and [Relationship to dinventory](implementation-guidance.md#inventory-and-dinventory) for additional detail. |
+| `inventory` | object | Information about the inventory included in the deal, reflecting the current live state. **Required when `liverevision` is present.** May be omitted on initial push when no revision has yet been accepted, in which case receivers should derive the inventory from `currentrevision`. Composition sub-objects should only include dimensions that are shared across all bid requests associated with the deal. For static inventory deals (`dinventory=1`), all five composition dimensions may be used. For dynamic inventory deals (`dinventory=2`), the non-site/app dimensions (`contentcomp`, `devicecomp`, `usercomp`) remain meaningful and are encouraged; `sitecomp` and `appcomp` may also be included but should be kept current via the revision workflow as inventory changes. <br><br>See [Object: Inventory](#object-inventory) and [Relationship to dinventory](implementation-guidance.md#inventory-and-dinventory) for additional detail. |
 | `curation` | object | Information about the curation package if applicable. <br><br>See [Object: Curation](#object-curation) for additional detail. |
 | `seatstatuses` | SeatStatus object array | Per-seat operational status of the deal within the buyer's system. Populated by the buyer's endpoint on GET responses. Each entry describes the state of the deal for a specific buyer seat (e.g., pending approval, active, paused). The seller's endpoint does not populate this field. See [Object: SeatStatus](#object-seatstatus) for additional detail. |
 | `ext` | object | Placeholder for deal-specific extensions |
@@ -117,7 +117,7 @@ The Deal API supports two operations: **POST** for pushing deal data (new deals,
 | `countries` | string array | An array of country codes in which the deal is available, where country code is a string using ISO-3166-3. If this is empty or missing, the deal is assumed to apply to all countries. |
 | `dealfloor` | float | Minimum bid for impressions for this deal expressed in CPM. Unless `pricetype` is Fixed, this should be used as guidance to buyers. <br><br> [See Implementation Guidance for additional detail](implementation-guidance.md#price-and-floor-guidance) |
 | `cur` | string; default "USD" | Bid currency using ISO-4217 alpha codes. |
-| `guar` | int | Deal guarantee type where:<br> `0` = Not Guaranteed — the deal is biddable but the buyer is not obligated to bid<br> `1` = Guaranteed — the deal is guaranteed and the bidder must bid on the deal<br> `2` = Biddable Guaranteed — the deal is guaranteed with a commitment to deliver, but the buyer bids competitively rather than at a fixed price |
+| `guar` | int | Deal guarantee type where:<br> `0` = Not Guaranteed — the deal is biddable but the buyer is not obligated to bid<br> `1` = Guaranteed — the deal is guaranteed and the bidder must bid on the deal |
 | `pricetype` | int, default 2 | Deal Price Type where:<br> `0` = Dynamic (ie. auction type will be provided by `request.at` attribute in OpenRTB Bid Request)<br> `1` = First Price<br> `2` = Second Price Plus<br> `3` = Fixed Price<br>Exchange-specific auction types can be defined using values 500 and greater. |
 | `units` | int | Number of units (impressions) over the specified start and end date of the deal. If the deal is guaranteed, this number should be provided. If the deal is not guaranteed this may be omitted. |
 | `totalcost` | float | The total cost over the specified start and end date of the deal. If the deal is guaranteed, this value should be provided. If the deal is not guaranteed this may be omitted. <br><br> [See Implementation Guidance for additional detail](implementation-guidance.md#price-and-floor-guidance) |
@@ -150,7 +150,6 @@ Describes the content context of the inventory in terms of OpenRTB 2.6 Content o
 |-----------|------|-------------|
 | `incl` | Content object array | Array of OpenRTB 2.6 Content objects representing content contexts to be included in the deal. An empty or absent array implies no content-based inclusion constraint. |
 | `excl` | Content object array | Array of OpenRTB 2.6 Content objects representing content contexts to be excluded from the deal. An empty or absent array implies no content-based exclusion constraint. |
-| `fidelity` | integer | Descriptive completeness of the `incl`/`excl` arrays: `0` = undisclosed, `1` = indicative, `2` = exhaustive. See [Fidelity](implementation-guidance.md#field-selection-guidance). |
 | `ext` | object | Placeholder for composition-specific extensions |
 
 ---
@@ -164,7 +163,6 @@ Describes the device profile of the inventory in terms of OpenRTB 2.6 Device obj
 |-----------|------|-------------|
 | `incl` | Device object array | Array of OpenRTB 2.6 Device objects representing device profiles to be included in the deal. An empty or absent array implies no device-based inclusion constraint. |
 | `excl` | Device object array | Array of OpenRTB 2.6 Device objects representing device profiles to be excluded from the deal. An empty or absent array implies no device-based exclusion constraint. |
-| `fidelity` | integer | Descriptive completeness of the `incl`/`excl` arrays: `0` = undisclosed, `1` = indicative, `2` = exhaustive. See [Fidelity](implementation-guidance.md#field-selection-guidance). |
 | `ext` | object | Placeholder for composition-specific extensions |
 
 ---
@@ -182,7 +180,6 @@ Note: Consistent with the Curated Audiences standard's design principles, UserCo
 |-----------|------|-------------|
 | `incl` | Data object array | Array of OpenRTB 2.6 Data objects (per `user.data` structure) representing curated audience segments to be included in the deal. Each Data object identifies a cohort provider via `name` (provider domain), specifies a taxonomy via `ext.segtax`, and optionally enumerates target segment IDs via `segment[].id`. An empty or absent array implies no audience-based inclusion constraint. |
 | `excl` | Data object array | Array of OpenRTB 2.6 Data objects representing curated audience segments to be excluded from the deal. Structure mirrors that of `incl`. An empty or absent array implies no audience-based exclusion constraint. |
-| `fidelity` | integer | Descriptive completeness of the `incl`/`excl` arrays: `0` = undisclosed, `1` = indicative, `2` = exhaustive. See [Fidelity](implementation-guidance.md#field-selection-guidance). |
 | `ext` | object | Placeholder for composition-specific extensions |
 
 ---
@@ -198,7 +195,6 @@ It is strongly recommended that `incl` entries include the `publisher` object (w
 |-----------|------|-------------|
 | `incl` | Site object array | Array of OpenRTB 2.6 Site objects representing web site inventory to be included in the deal. An empty or absent array implies no site-based inclusion constraint. |
 | `excl` | Site object array | Array of OpenRTB 2.6 Site objects representing web site inventory to be excluded from the deal. An empty or absent array implies no site-based exclusion constraint. |
-| `fidelity` | integer | Descriptive completeness of the `incl`/`excl` arrays: `0` = undisclosed, `1` = indicative, `2` = exhaustive. See [Fidelity](implementation-guidance.md#field-selection-guidance). |
 | `ext` | object | Placeholder for composition-specific extensions |
 
 ---
@@ -214,7 +210,6 @@ It is strongly recommended that `incl` entries include the `publisher` object (w
 |-----------|------|-------------|
 | `incl` | App object array | Array of OpenRTB 2.6 App objects representing application inventory to be included in the deal. An empty or absent array implies no app-based inclusion constraint. |
 | `excl` | App object array | Array of OpenRTB 2.6 App objects representing application inventory to be excluded from the deal. An empty or absent array implies no app-based exclusion constraint. |
-| `fidelity` | integer | Descriptive completeness of the `incl`/`excl` arrays: `0` = undisclosed, `1` = indicative, `2` = exhaustive. See [Fidelity](implementation-guidance.md#field-selection-guidance). |
 | `ext` | object | Placeholder for composition-specific extensions |
 
 ---

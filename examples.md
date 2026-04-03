@@ -37,7 +37,7 @@ This scenario uses the **baseline seller-push model**: the saleshouse pushes the
 
 The saleshouse pushes the initial library deal to the buyer's push endpoint. The audience composition (`usercomp`) is the primary targeting signal — content and device composition are included but play a supporting role (brand safety and format eligibility respectively). Because no revision has yet been accepted, `currentrevision` carries the full deal specification.
 
-`sitecomp` is included with `fidelity=1` (indicative) to identify the current publisher roster and support supply chain authorization, with the understanding that the list may change over the flight. Note that `enddate` is omitted (evergreen), and neither `wseat` nor `bseat` is present — any buyer seat may target this deal.
+`sitecomp` is included to identify the current publisher roster and support supply chain authorization, with the understanding that the list may change over the flight. Note that `enddate` is omitted (evergreen), and neither `wseat` nor `bseat` is present — any buyer seat may target this deal.
 
 **Request**
 ```
@@ -85,7 +85,6 @@ Content-Type: application/json
     },
     "inventory": {
       "usercomp": {
-        "fidelity": 2,
         "incl": [
           {
             "name": "premiumwebgroup.com",
@@ -107,14 +106,12 @@ Content-Type: application/json
         ]
       },
       "contentcomp": {
-        "fidelity": 1,
         "excl": [
           { "cat": ["IAB25"] },
           { "cat": ["IAB26"] }
         ]
       },
       "devicecomp": {
-        "fidelity": 2,
         "incl": [
           { "devicetype": 2 },
           { "devicetype": 1 }
@@ -125,7 +122,6 @@ Content-Type: application/json
         ]
       },
       "sitecomp": {
-        "fidelity": 1,
         "incl": [
           {
             "domain": "therecipehub.com",
@@ -204,7 +200,6 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
   },
   "inventory": {
     "usercomp": {
-      "fidelity": 2,
       "incl": [
         {
           "name": "premiumwebgroup.com",
@@ -226,14 +221,12 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
       ]
     },
     "contentcomp": {
-      "fidelity": 1,
       "excl": [
         { "cat": ["IAB25"] },
         { "cat": ["IAB26"] }
       ]
     },
     "devicecomp": {
-      "fidelity": 2,
       "incl": [
         { "devicetype": 2 },
         { "devicetype": 1 }
@@ -244,7 +237,6 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
       ]
     },
     "sitecomp": {
-      "fidelity": 1,
       "incl": [
         {
           "domain": "therecipehub.com",
@@ -339,7 +331,6 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
   },
   "inventory": {
     "usercomp": {
-      "fidelity": 2,
       "incl": [
         {
           "name": "premiumwebgroup.com",
@@ -361,14 +352,12 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
       ]
     },
     "contentcomp": {
-      "fidelity": 1,
       "excl": [
         { "cat": ["IAB25"] },
         { "cat": ["IAB26"] }
       ]
     },
     "devicecomp": {
-      "fidelity": 2,
       "incl": [
         { "devicetype": 2 },
         { "devicetype": 1 }
@@ -379,7 +368,6 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
       ]
     },
     "sitecomp": {
-      "fidelity": 1,
       "incl": [
         {
           "domain": "therecipehub.com",
@@ -496,7 +484,6 @@ Content-Type: application/json
     },
     "inventory": {
       "contentcomp": {
-        "fidelity": 1,
         "incl": [
           {
             "prodq": 1,
@@ -520,7 +507,6 @@ Content-Type: application/json
         ]
       },
       "devicecomp": {
-        "fidelity": 2,
         "incl": [
           { "devicetype": 3 },
           { "devicetype": 7 }
@@ -531,7 +517,6 @@ Content-Type: application/json
         ]
       },
       "appcomp": {
-        "fidelity": 2,
         "incl": [
           {
             "name": "Apex Streaming",
@@ -644,7 +629,6 @@ Content-Type: application/json
     },
     "inventory": {
       "contentcomp": {
-        "fidelity": 1,
         "incl": [
           {
             "prodq": 1,
@@ -740,7 +724,6 @@ GET https://meridian-ssp.tv/deal-sync/v1/deals/deal-ctv-q3-premium-001
   },
   "inventory": {
     "contentcomp": {
-      "fidelity": 1,
       "incl": [
         {
           "prodq": 1,
@@ -765,7 +748,6 @@ GET https://meridian-ssp.tv/deal-sync/v1/deals/deal-ctv-q3-premium-001
       ]
     },
     "devicecomp": {
-      "fidelity": 2,
       "incl": [
         { "devicetype": 3 },
         { "devicetype": 7 }
@@ -776,7 +758,6 @@ GET https://meridian-ssp.tv/deal-sync/v1/deals/deal-ctv-q3-premium-001
       ]
     },
     "appcomp": {
-      "fidelity": 2,
       "incl": [
         {
           "name": "Apex Streaming",
@@ -834,7 +815,7 @@ The buyer can confirm `sellerstatus=2` (LIVE) and traffic against the deal's ter
 <a name="scenario-3-buyer-initiated-mobile-gaming-deal-with-seller-revision"></a>
 ## Scenario 3: Buyer-Initiated Mobile Gaming Deal with Seller Revision
 
-A buyer (`buyerco.com`) initiates a deal targeting premium mobile gaming inventory across three apps from different publishers. The deal specifies an exhaustive app list (`fidelity=2`) and restricts to mobile devices only. The seller (GameGrid SSP, `gamegrid-ssp.com`) accepts, then proposes a revision to expand the deal into console gaming supply on Xbox and PlayStation. The buyer accepts the expansion. Part-way into delivery, the seller pauses the deal, and the buyer subsequently cancels it.
+A buyer (`buyerco.com`) initiates a deal targeting premium mobile gaming inventory across three apps from different publishers. The deal specifies an exhaustive app list and restricts to mobile devices only. The seller (GameGrid SSP, `gamegrid-ssp.com`) accepts, then proposes a revision to expand the deal into console gaming supply on Xbox and PlayStation. The buyer accepts the expansion. Part-way into delivery, the seller pauses the deal, and the buyer subsequently cancels it.
 
 This scenario uses the **bidirectional model**: both parties push to each other's endpoints.
 
@@ -844,7 +825,7 @@ This scenario uses the **bidirectional model**: both parties push to each other'
 
 The buyer initiates a new deal by pushing a Deal object to the seller's push endpoint. Per the spec, the buyer proposes a value for `id`, but it is formally confirmed by the seller upon acceptance since the seller (SSP) controls bid request construction. The buyer populates `buyerdealid` with their own internal reference. `buyerstatus=0` (PENDING) reflects the buyer's view; `sellerstatus` is omitted since the buyer does not know the seller's state yet.
 
-Because no revision has been accepted, `currentrevision` carries the full deal specification. The `appcomp` is exhaustive (`fidelity=2`) — these three apps are the complete set of inventory for the deal.
+Because no revision has been accepted, `currentrevision` carries the full deal specification. The `appcomp` lists all three apps that make up the complete set of inventory for the deal.
 
 **Request**
 ```
@@ -888,14 +869,12 @@ Content-Type: application/json
     },
     "inventory": {
       "contentcomp": {
-        "fidelity": 1,
         "excl": [
           { "cat": ["IAB25"] },
           { "cat": ["IAB26"] }
         ]
       },
       "devicecomp": {
-        "fidelity": 2,
         "incl": [
           { "devicetype": 4 },
           { "devicetype": 5 }
@@ -906,7 +885,6 @@ Content-Type: application/json
         ]
       },
       "appcomp": {
-        "fidelity": 2,
         "incl": [
           {
             "name": "Puzzle Quest Saga",
@@ -1011,7 +989,6 @@ Content-Type: application/json
     "comment": "Proposing console expansion. Battle Royale Arena and Speed Rivals Racing are now available on Xbox and PlayStation. Adding console device type and console app bundles.",
     "inventory": {
       "devicecomp": {
-        "fidelity": 2,
         "incl": [
           { "devicetype": 4 },
           { "devicetype": 5 },
@@ -1023,7 +1000,6 @@ Content-Type: application/json
         ]
       },
       "appcomp": {
-        "fidelity": 2,
         "incl": [
           {
             "name": "Puzzle Quest Saga",

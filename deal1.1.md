@@ -96,7 +96,7 @@ Version 1.1 introduces the following changes from Version 1.0:
 
 - **Inventory Composition Model:** The `Inventory` object has been redesigned to support a richer, composition-based approach to describing inventory. The flat attribute model from v1.0 is replaced by five composition sub-objects — `ContentComposition`, `DeviceComposition`, `UserComposition`, `SiteComposition`, and `AppComposition` — each supporting explicit inclusion and exclusion arrays, enabling deals to be described with greater precision and expressiveness. Four sub-objects (`contentcomp`, `devicecomp`, `sitecomp`, `appcomp`) use arrays of their corresponding OpenRTB 2.6 top-level objects. `UserComposition` uses arrays of OpenRTB 2.6 Data objects (the `user.data` structure), scoped to curated audience cohort signals per the IAB Tech Lab Curated Audiences standard.
 - **Bidirectional API Model:** Version 1.1 extends the API to support an optional bidirectional push model. Either party — seller (e.g., SSP) or buyer (e.g., DSP) — may now initiate a deal or propose a revision by pushing to the other party's endpoint, provided both parties have agreed to support bidirectional communication. A seller-push-only implementation remains fully compliant. The `Deal` object gains `sellerdealid` and `buyerdealid` fields to allow each party to maintain their own namespace identifier for a deal alongside the canonical bid-stream `id`.
-- **Deal Revision Workflow:** Version 1.1 introduces a structured revision lifecycle for deal terms, replacing the need for ad-hoc differential overrides. All updates to deal terms — whether minor adjustments or substantive renegotiations — flow through the same revision workflow: a party proposes a revision, and the counterparty accepts or rejects it. The `Deal` object gains `currentrevision`, `liverevision`, and `dealstatus` fields. The new `DealRevision`, `DealActor`, and `DealResponse` objects provide a standardized mechanism for either party to propose, accept, or reject changes to deal terms, with a clear record of what was changed and by whom. The legacy `sellerstatus` field is deprecated in favor of `dealstatus`. See [Deal Revision Workflow](#deal-revision-workflow) for implementation guidance.
+- **Deal Revision Workflow:** Version 1.1 introduces a structured revision lifecycle for deal terms, replacing the need for ad-hoc differential overrides. All updates to deal terms — whether minor adjustments or substantive renegotiations — flow through the same revision workflow: a party proposes a revision, and the counterparty accepts or rejects it. The `Deal` object gains `currentrevision`, `liverevision`, `sellerstatus`, and `buyerstatus` fields. The new `DealRevision`, `DealActor`, and `DealResponse` objects provide a standardized mechanism for either party to propose, accept, or reject changes to deal terms, with a clear record of what was changed and by whom. `sellerstatus` is redefined in v1.1 with a lifecycle-aligned enumeration; `buyerstatus` is added as its buyer-side counterpart. See [Deal Revision Workflow](#deal-revision-workflow) for implementation guidance.
 
 ---
 
@@ -114,8 +114,8 @@ An HTTP POST endpoint for accepting deal data. At minimum, the buyer system must
 | `buyerdealid` | string | The deal's reference identifier in the buyer's system namespace. Allows the buyer to maintain their own persistent link to the deal independent of the seller-assigned `id`. For buyer-initiated deals this should be populated by the buyer in the initial revision push. |
 | `name` | string, recommended | Name of the deal as assigned by the initiating party. Note: This name may be displayed to the counterparty and should be chosen accordingly. |
 | `created` | string | UTC timestamp in seconds in ISO-8601 of when the deal was first created. |
-| `dealstatus` | int | Lifecycle status of the deal:<br> `0` = pending acceptance — deal has been sent but not yet accepted by the counterparty<br> `1` = not started — deal has been accepted but the flight start date has not yet been reached<br> `2` = live — deal is active and eligible to receive bid requests<br> `3` = live, not spending — deal is live but has not received spend within an expected window<br> `4` = paused — deal has been temporarily suspended<br> `5` = completed — deal has reached its end date or delivery goal<br> `6` = expired — deal lapsed without being activated<br> `7` = canceled — deal was terminated prior to completion<br><br>See [Deal Revision Workflow](#deal-revision-workflow) for additional detail. |
-| `sellerstatus` | int, default 0 | **Deprecated in v1.1.** Use `dealstatus` instead. Status of the deal in the seller's system where:<br> `0` = deal is active<br> `1` = deal is paused<br> `2` = deal is pending<br> `4` = deal is complete<br> `5` = deal is archived |
+| `sellerstatus` | int | Lifecycle status of the deal from the seller's perspective:<br> `0` = pending — deal has been pushed, awaiting counterparty acceptance<br> `1` = not started — deal has been accepted but the flight start date has not yet been reached<br> `2` = live — deal is active and the seller is trafficking against it<br> `3` = live, not spending — deal is live but no spend has been observed within an expected window (seller diagnostic)<br> `4` = paused — seller has temporarily suspended the deal<br> `5` = completed — deal has reached its end date or delivery goal<br> `6` = expired — deal lapsed without being activated<br> `7` = canceled — deal was terminated prior to completion<br><br>The seller populates this field in all Deal pushes and status responses. See [Deal Revision Workflow](#deal-revision-workflow) for transition rules. |
+| `buyerstatus` | int | Lifecycle status of the deal from the buyer's perspective:<br> `0` = pending — deal received, awaiting buyer review or acceptance<br> `1` = not started — deal has been accepted but the flight start date has not yet been reached<br> `2` = live — buyer is actively trafficking against the deal<br> `3` = paused — buyer has temporarily suspended their use of the deal<br> `4` = completed — deal has reached its end date or delivery goal<br> `5` = expired — deal lapsed without being activated<br> `6` = canceled — deal was terminated prior to completion<br><br>The buyer populates this field in Deal pushes (bidirectional model) and status responses. In the baseline model the seller learns `buyerstatus` by polling the buyer's status endpoint. See [Deal Revision Workflow](#deal-revision-workflow) for transition rules. |
 | `currentrevision` | DealRevision object | The pending proposed revision, present only when a revision is in PROPOSED state (`negotiationstatus=0`). Absent when no revision is outstanding (i.e., when the deal is quiescent and `liverevision` fully describes the current terms). **Required on initial push** (before any revision has been accepted) since `liverevision` is not yet established. See [Object: DealRevision](#object-dealrevision) and [Deal Revision Workflow](#deal-revision-workflow) for additional detail. |
 | `liverevision` | DealRevision object | The last revision accepted by the counterparty (`negotiationstatus=1`). Absent if no revision has yet been accepted. When `currentrevision` is present, its delta fields represent changes relative to `liverevision`. See [Deal Revision Workflow](#deal-revision-workflow) for additional detail. |
 | `origin` | string, **required** | The advertising system domain of the business entity that will receive bid responses for the deal (typically the SSP running the auction). This field identifies the auction operator, not the party who initiated the deal. |
@@ -282,7 +282,7 @@ A DealRevision records a proposed or accepted change to a deal's terms. Each rev
 | `curation` | object | Delta: updated Curation object. Only fields that differ from `liverevision` need be included. See [Object: Curation](#object-curation). |
 | `ext` | object | Placeholder for revision-specific extensions. |
 
-The following Deal-level fields are **not revisionable** and cannot be changed via the revision workflow: `id`, `sellerdealid`, `buyerdealid`, `origin`, `created`, `dealstatus`, `sellerstatus`, `currentrevision`, `liverevision`. These are structural or lifecycle fields managed by the protocol itself rather than by deal term negotiation.
+The following Deal-level fields are **not revisionable** and cannot be changed via the revision workflow: `id`, `sellerdealid`, `buyerdealid`, `origin`, `created`, `sellerstatus`, `buyerstatus`, `currentrevision`, `liverevision`. These are structural or lifecycle fields managed by the protocol itself rather than by deal term negotiation.
 
 ---
 
@@ -328,7 +328,7 @@ Information about the status of the deal in the buying system at a seat level.
 |-----------|------|-------------|
 | `version` | string, **required** | Version of the Deal API in use |
 | `id` | string, **required** | A unique identifier for the deal as passed in the initial push that this response is referring to. This should always be the same id as `deal.id` |
-| `buyerstatus` | object array | Information about the buying seat where the Deal will be trafficked |
+| `seatstatuses` | object array | Information about the buying seat where the Deal will be trafficked. (Renamed from `buyerstatus` in v1.1 to avoid collision with the Deal-level `buyerstatus` lifecycle field.) |
 | `ext` | object | Placeholder for deal-specific extensions |
 
 <a name="object-buyerstatus"></a>
@@ -493,7 +493,7 @@ For `sitecomp` and `appcomp` in a dynamic deal, the composition can still be val
 <a name="deal-revision-workflow"></a>
 ## Deal Revision Workflow
 
-Version 1.1 introduces a structured mechanism for sellers and buyers to propose and negotiate changes to deal terms after initial deal creation. The revision workflow is built on three new fields on the Deal object (`currentrevision`, `liverevision`, `dealstatus`) and two new objects (`DealRevision`, `DealActor`).
+Version 1.1 introduces a structured mechanism for sellers and buyers to propose and negotiate changes to deal terms after initial deal creation. The revision workflow is built on four fields on the Deal object (`currentrevision`, `liverevision`, `sellerstatus`, `buyerstatus`) and two new objects (`DealRevision`, `DealActor`).
 
 <a name="revision-semantics"></a>
 ### Revision Semantics
@@ -520,46 +520,74 @@ Each deal begins with an initial revision created by the initiating party when t
 - `2` REJECTED: The revision was rejected. The prior `liverevision` (if any) remains the operative state.
 - `3` SUPERSEDED: The revision was replaced by a newer revision before the counterparty could act.
 
-**`dealstatus`** (on Deal) tracks the overall lifecycle of the deal, independent of any individual revision's negotiation outcome:
+**`sellerstatus`** (on Deal) tracks the lifecycle of the deal from the seller's perspective, independent of any individual revision's negotiation outcome:
 
-- `0` PENDING_ACCEPTANCE: Deal has been proposed but the counterparty has not yet accepted.
+- `0` PENDING: Deal has been pushed, awaiting counterparty acceptance.
 - `1` NOT_STARTED: Deal has been accepted but the flight start date has not yet been reached.
-- `2` LIVE: Deal is active and eligible to receive bid requests.
-- `3` LIVE_NOT_SPENDING: Deal is live but has not received spend within an expected window.
-- `4` PAUSED: Deal has been temporarily suspended.
+- `2` LIVE: Deal is active and the seller is trafficking against it.
+- `3` LIVE_NOT_SPENDING: Deal is live but no spend has been observed within an expected window (seller diagnostic).
+- `4` PAUSED: Seller has temporarily suspended the deal.
 - `5` COMPLETED: Deal has reached its end date or delivery goal.
 - `6` EXPIRED: Deal lapsed without being activated.
 - `7` CANCELED: Deal was terminated prior to completion.
 
-**`dealstatus` transitions:** The following table defines the valid state transitions, their triggers, and which party is authorized to initiate each transition. Three states — COMPLETED, EXPIRED, and CANCELED — are terminal; no outgoing transitions are permitted. To reactivate a canceled deal, the parties should create a new deal.
+**`buyerstatus`** (on Deal) tracks the lifecycle of the deal from the buyer's perspective:
+
+- `0` PENDING: Deal has been received, awaiting buyer review or acceptance.
+- `1` NOT_STARTED: Deal has been accepted but the flight start date has not yet been reached.
+- `2` LIVE: Buyer is actively trafficking against the deal.
+- `3` PAUSED: Buyer has temporarily suspended their use of the deal.
+- `4` COMPLETED: Deal has reached its end date or delivery goal.
+- `5` EXPIRED: Deal lapsed without being activated.
+- `6` CANCELED: Deal was terminated prior to completion.
+
+**`sellerstatus` transitions:** The following table defines valid transitions from the seller's perspective. Three states — COMPLETED, EXPIRED, and CANCELED — are terminal; no outgoing transitions are permitted from them. To reactivate a canceled deal, the parties should create a new deal.
 
 | From | To | Trigger | Initiated by |
 |---|---|---|---|
-| PENDING_ACCEPTANCE (0) | NOT_STARTED (1) | Counterparty accepts initial revision | Automatic (revision workflow) |
-| PENDING_ACCEPTANCE (0) | CANCELED (7) | Party withdraws before acceptance | Either party |
+| PENDING (0) | NOT_STARTED (1) | Buyer accepts initial revision | Automatic (revision workflow) |
+| PENDING (0) | CANCELED (7) | Either party withdraws before acceptance | Either party |
 | NOT_STARTED (1) | LIVE (2) | Flight date begins or seller activates | Seller or automatic |
 | NOT_STARTED (1) | EXPIRED (6) | End date passes before activation | Automatic |
-| NOT_STARTED (1) | CANCELED (7) | Party cancels before deal goes live | Either party |
+| NOT_STARTED (1) | CANCELED (7) | Either party cancels before deal goes live | Either party |
 | LIVE (2) | LIVE_NOT_SPENDING (3) | No spend observed during active flight | Seller (diagnostic) |
-| LIVE (2) | PAUSED (4) | Explicit pause | Either party |
+| LIVE (2) | PAUSED (4) | Seller pauses the deal | Seller |
 | LIVE (2) | COMPLETED (5) | Flight ends or delivery goal met | Automatic |
 | LIVE (2) | EXPIRED (6) | End date passes | Automatic |
-| LIVE (2) | CANCELED (7) | Party cancels mid-flight | Either party |
+| LIVE (2) | CANCELED (7) | Either party cancels mid-flight | Either party |
 | LIVE_NOT_SPENDING (3) | LIVE (2) | Spending resumes | Seller (diagnostic) |
-| LIVE_NOT_SPENDING (3) | PAUSED (4) | Explicit pause | Either party |
+| LIVE_NOT_SPENDING (3) | PAUSED (4) | Seller pauses the deal | Seller |
 | LIVE_NOT_SPENDING (3) | COMPLETED (5) | Flight ends | Automatic |
 | LIVE_NOT_SPENDING (3) | EXPIRED (6) | End date passes | Automatic |
-| LIVE_NOT_SPENDING (3) | CANCELED (7) | Party cancels | Either party |
-| PAUSED (4) | LIVE (2) | Deal resumed | Either party |
+| LIVE_NOT_SPENDING (3) | CANCELED (7) | Either party cancels | Either party |
+| PAUSED (4) | LIVE (2) | Seller resumes the deal | Seller |
 | PAUSED (4) | COMPLETED (5) | Flight ends while paused | Automatic |
 | PAUSED (4) | EXPIRED (6) | End date passes while paused | Automatic |
-| PAUSED (4) | CANCELED (7) | Party cancels while paused | Either party |
+| PAUSED (4) | CANCELED (7) | Either party cancels while paused | Either party |
 
-Proposing a revision on a deal that is already LIVE, PAUSED, or LIVE_NOT_SPENDING does **not** change `dealstatus`. The deal continues to operate under `liverevision` terms while `currentrevision` is pending. `dealstatus` reflects the operational state of the deal; `negotiationstatus` on `currentrevision` independently tracks whether a proposed change has been accepted.
+**`buyerstatus` transitions:** The following table defines valid transitions from the buyer's perspective. COMPLETED, EXPIRED, and CANCELED are terminal.
 
-**Relationship to `sellerstatus`:** The `sellerstatus` field from v1.0 is deprecated in v1.1. Sellers should use `dealstatus` to communicate the lifecycle state of a deal going forward. `sellerstatus` may be included for backward compatibility with receivers that have not yet migrated but should not be the primary mechanism for communicating deal status.
+| From | To | Trigger | Initiated by |
+|---|---|---|---|
+| PENDING (0) | NOT_STARTED (1) | Buyer accepts initial revision | Buyer (DealResponse or internal acceptance) |
+| PENDING (0) | CANCELED (6) | Either party withdraws before acceptance | Either party |
+| NOT_STARTED (1) | LIVE (2) | Flight date begins | Automatic |
+| NOT_STARTED (1) | EXPIRED (5) | End date passes before activation | Automatic |
+| NOT_STARTED (1) | CANCELED (6) | Either party cancels before deal goes live | Either party |
+| LIVE (2) | PAUSED (3) | Buyer pauses their use of the deal | Buyer |
+| LIVE (2) | COMPLETED (4) | Flight ends or delivery goal met | Automatic |
+| LIVE (2) | EXPIRED (5) | End date passes | Automatic |
+| LIVE (2) | CANCELED (6) | Either party cancels mid-flight | Either party |
+| PAUSED (3) | LIVE (2) | Buyer resumes their use of the deal | Buyer |
+| PAUSED (3) | COMPLETED (4) | Flight ends while paused | Automatic |
+| PAUSED (3) | EXPIRED (5) | End date passes while paused | Automatic |
+| PAUSED (3) | CANCELED (6) | Either party cancels while paused | Either party |
 
-**Relationship to `BuyerStatus.status`:** The `dealstatus` field on the Deal object and the `status` field on the BuyerStatus object serve different purposes and operate at different levels of granularity. `dealstatus` reflects the shared, agreed-upon lifecycle state of the deal relationship — is the deal pending, live, completed, or canceled? `BuyerStatus.status` reflects the per-seat operational state of the deal within the buyer's system — has the trader approved it, is it in a campaign, is it actively spending? These two statuses are independent. A deal may be `dealstatus=2` (LIVE) while a particular buyer seat has `BuyerStatus.status=5` (paused) — this is not contradictory; it means the deal is active but that specific seat has paused its campaign against it. Implementers should not attempt to reconcile these statuses into a single value.
+**Coordination rules:** `sellerstatus` and `buyerstatus` are each party's own operational view and may differ legitimately — a buyer pause does not imply a seller pause and vice versa. However, terminal states (COMPLETED, EXPIRED, CANCELED) should be reflected symmetrically: when one party sets a terminal state, the counterparty should mirror it upon learning of it (via push or poll). Note that `sellerstatus=PAUSED` is the effective deal-dark signal: since the seller controls bid request delivery, a seller pause suppresses auction eligibility regardless of `buyerstatus`. Each party populates only their own status field when pushing a Deal object; a party may additionally echo the counterparty's last-known status if they have learned it via polling.
+
+Proposing a revision on a deal that is already LIVE, PAUSED, or LIVE_NOT_SPENDING does **not** change `sellerstatus` or `buyerstatus`. The deal continues to operate under `liverevision` terms while `currentrevision` is pending. `negotiationstatus` on `currentrevision` independently tracks whether a proposed change has been accepted.
+
+**Relationship to `BuyerStatus.status`:** The `buyerstatus` field on the Deal object and the `status` field on the BuyerStatus object serve different purposes and operate at different levels of granularity. `buyerstatus` reflects the buyer's deal-level lifecycle view — has the buyer accepted, are they trafficking, have they paused? `BuyerStatus.status` reflects the per-seat operational state within the buyer's system — has the trader approved it, is it in a campaign, is it actively spending? These two statuses are independent. A deal may have `buyerstatus=2` (LIVE) while a particular buyer seat has `BuyerStatus.status=5` (paused) — this is not contradictory; it means the buyer is trafficking the deal but that specific seat has paused its campaign against it. Implementers should not attempt to reconcile these statuses into a single value.
 
 <a name="full-history-query-parameter"></a>
 ### `full_history` Query Parameter
@@ -571,9 +599,9 @@ By default, the Deal API returns only `currentrevision` and `liverevision` on th
 
 The following illustrates a typical revision lifecycle. Revision labels (Revision 1, Revision 2, etc.) are used for readability; in the actual data model each revision is identified by its UUID `revisionid`.
 
-1. **Seller creates the deal.** Seller pushes a Deal object with `currentrevision` set to a new DealRevision (`revisionid=<uuid-A>`, `negotiationstatus=0` PROPOSED, `revisedby.role=0` SELLER). `liverevision` is absent. `dealstatus=0` (PENDING_ACCEPTANCE).
+1. **Seller creates the deal.** Seller pushes a Deal object with `currentrevision` set to a new DealRevision (`revisionid=<uuid-A>`, `negotiationstatus=0` PROPOSED, `revisedby.role=0` SELLER). `liverevision` is absent. `sellerstatus=0` (PENDING). Buyer's system initializes `buyerstatus=0` (PENDING) upon receiving the push.
 
-2. **Buyer accepts.** The buyer pushes a DealResponse with `dealid=<deal-id>`, `revisionid=<uuid-A>`, `negotiationstatus=1` (ACCEPTED), and `respondedby.role=1` (BUYER). The seller validates that `<uuid-A>` matches `currentrevision.revisionid`. `negotiationstatus` on Revision 1 transitions to `1` (ACCEPTED). `liverevision` is set to Revision 1. `dealstatus` transitions to `1` (NOT_STARTED) or `2` (LIVE) depending on flight dates.
+2. **Buyer accepts.** The buyer pushes a DealResponse with `dealid=<deal-id>`, `revisionid=<uuid-A>`, `negotiationstatus=1` (ACCEPTED), and `respondedby.role=1` (BUYER). The seller validates that `<uuid-A>` matches `currentrevision.revisionid`. `negotiationstatus` on Revision 1 transitions to `1` (ACCEPTED). `liverevision` is set to Revision 1. Both `sellerstatus` and `buyerstatus` transition to `1` (NOT_STARTED) or `2` (LIVE) depending on flight dates.
 
 3. **Seller proposes a price change.** Seller creates a new DealRevision (`revisionid=<uuid-B>`, `negotiationstatus=0` PROPOSED, `revisedby.role=0` SELLER) with a `terms` delta containing only the fields that changed from Revision 1. `currentrevision` points to Revision 2. `liverevision` still points to Revision 1.
 

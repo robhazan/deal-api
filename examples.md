@@ -11,6 +11,13 @@
   - [Step 3: Buyer Proposes a Revision](#step-3-buyer-proposes-a-revision)
   - [Step 4: Seller Accepts the Revision](#step-4-seller-accepts-the-revision)
   - [Step 5: Buyer Polls Seller's Status Endpoint](#step-5-buyer-polls-sellers-status-endpoint)
+- [Scenario 3: Buyer-Initiated Mobile Gaming Deal with Seller Revision](#scenario-3-buyer-initiated-mobile-gaming-deal-with-seller-revision)
+  - [Step 1: Buyer Creates the Deal](#step-1-buyer-creates-the-deal)
+  - [Step 2: Seller Accepts the Initial Proposal](#step-2-seller-accepts-the-initial-proposal-1)
+  - [Step 3: Seller Proposes a Revision (Console Expansion)](#step-3-seller-proposes-a-revision-console-expansion)
+  - [Step 4: Buyer Accepts the Revision](#step-4-buyer-accepts-the-revision-1)
+  - [Step 5: Seller Pauses the Deal](#step-5-seller-pauses-the-deal)
+  - [Step 6: Buyer Cancels the Deal](#step-6-buyer-cancels-the-deal)
 
 ---
 
@@ -45,7 +52,7 @@ Content-Type: application/json
   "origin": "adxchange.io",
   "seller": "premiumwebgroup.com",
   "created": "2026-03-24T08:00:00Z",
-  "dealstatus": 0,
+  "sellerstatus": 0,
   "curation": {
     "curator": "premiumwebgroup.com",
     "cdealid": "PWG-CUR-2026-AUTO-887",
@@ -152,7 +159,7 @@ Content-Type: application/json
 }
 ```
 
-The buyer receives this push and stores the deal with `dealstatus=0` (PENDING_ACCEPTANCE). In the baseline model, the buyer reviews the terms internally and communicates their verdict by updating the deal state on their side — no push to the seller is required.
+The buyer receives this push and stores the deal with `buyerstatus=0` (PENDING). In the baseline model, the buyer reviews the terms internally and communicates their verdict by updating their status on their side — no push to the seller is required.
 
 ---
 
@@ -175,7 +182,7 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
   "origin": "adxchange.io",
   "seller": "premiumwebgroup.com",
   "created": "2026-03-24T08:00:00Z",
-  "dealstatus": 1,
+  "buyerstatus": 1,
   "adtypes": [1, 2],
   "auxdata": 2,
   "pubcount": 2,
@@ -282,7 +289,7 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
 }
 ```
 
-`dealstatus=1` (NOT_STARTED) — the deal has been accepted but the flight start date of April 1 has not yet been reached. The seller can begin preparing bid request targeting against `deal.id`. `liverevision` confirms the accepted terms; `currentrevision` is absent as there is no pending proposal.
+`buyerstatus=1` (NOT_STARTED) — the deal has been accepted but the flight start date of April 1 has not yet been reached. The seller can begin preparing bid request targeting against `deal.id`. `liverevision` confirms the accepted terms; `currentrevision` is absent as there is no pending proposal.
 
 ---
 
@@ -313,7 +320,7 @@ Content-Type: application/json
   "origin": "meridian-ssp.tv",
   "seller": "apexstreaming.tv",
   "created": "2026-03-20T09:00:00Z",
-  "dealstatus": 0,
+  "sellerstatus": 0,
   "currentrevision": {
     "revisionid": "a4c2f1e8-3b7d-4a9f-8c5e-1d6b2f0e3a47",
     "revisedate": "2026-03-20T09:00:00Z",
@@ -415,13 +422,13 @@ Content-Type: application/json
 }
 ```
 
-The buyer receives this push and stores the deal with `dealstatus=0` (PENDING_ACCEPTANCE).
+The buyer receives this push and stores the deal with `buyerstatus=0` (PENDING).
 
 ---
 
 ### Step 2: Buyer Accepts the Initial Proposal
 
-After reviewing the terms, the buyer accepts by pushing a DealResponse to the seller's push endpoint. The `revisionid` must match the `currentrevision.revisionid` from the seller's initial push. On receipt, the seller validates the match, transitions `negotiationstatus` on the initial revision to ACCEPTED, promotes it to `liverevision`, and advances `dealstatus` to `1` (NOT_STARTED) or `2` (LIVE) depending on whether the flight start date has been reached.
+After reviewing the terms, the buyer accepts by pushing a DealResponse to the seller's push endpoint. The `revisionid` must match the `currentrevision.revisionid` from the seller's initial push. On receipt, the seller validates the match, transitions `negotiationstatus` on the initial revision to ACCEPTED, promotes it to `liverevision`, and advances both `sellerstatus` and `buyerstatus` to `1` (NOT_STARTED) or `2` (LIVE) depending on whether the flight start date has been reached.
 
 **Request**
 ```
@@ -465,7 +472,7 @@ Content-Type: application/json
 ```json
 {
   "id": "deal-ctv-q3-premium-001",
-  "dealstatus": 2,
+  "buyerstatus": 2,
   "currentrevision": {
     "revisionid": "c9f7b3a2-1e4d-4c8f-9b2a-5e7d1f3c6a09",
     "revisedate": "2026-04-15T11:22:00Z",
@@ -567,7 +574,7 @@ GET https://meridian-ssp.tv/deal-sync/v1/deals/deal-ctv-q3-premium-001
   "origin": "meridian-ssp.tv",
   "seller": "apexstreaming.tv",
   "created": "2026-03-20T09:00:00Z",
-  "dealstatus": 2,
+  "sellerstatus": 2,
   "adtypes": [2],
   "auxdata": 3,
   "pubcount": 2,
@@ -670,4 +677,340 @@ GET https://meridian-ssp.tv/deal-sync/v1/deals/deal-ctv-q3-premium-001
 }
 ```
 
-The buyer can confirm `dealstatus=2` (LIVE) and traffic against the deal's terms with confidence that `liverevision` represents the fully settled state.
+The buyer can confirm `sellerstatus=2` (LIVE) and traffic against the deal's terms with confidence that `liverevision` represents the fully settled state.
+
+---
+
+<a name="scenario-3-buyer-initiated-mobile-gaming-deal-with-seller-revision"></a>
+## Scenario 3: Buyer-Initiated Mobile Gaming Deal with Seller Revision
+
+A buyer (`buyerco.com`) initiates a deal targeting premium mobile gaming inventory across three apps from different publishers. The deal specifies an exhaustive app list (`fidelity=2`) and restricts to mobile devices only. The seller (GameGrid SSP, `gamegrid-ssp.com`) accepts, then proposes a revision to expand the deal into console gaming supply on Xbox and PlayStation. The buyer accepts the expansion. Part-way into delivery, the seller pauses the deal, and the buyer subsequently cancels it.
+
+This scenario uses the **bidirectional model**: both parties push to each other's endpoints.
+
+---
+
+### Step 1: Buyer Creates the Deal
+
+The buyer initiates a new deal by pushing a Deal object to the seller's push endpoint. Per the spec, the buyer proposes a value for `id`, but it is formally confirmed by the seller upon acceptance since the seller (SSP) controls bid request construction. The buyer populates `buyerdealid` with their own internal reference. `buyerstatus=0` (PENDING) reflects the buyer's view; `sellerstatus` is omitted since the buyer does not know the seller's state yet.
+
+Because no revision has been accepted, `currentrevision` carries the full deal specification. The `appcomp` is exhaustive (`fidelity=2`) — these three apps are the complete set of inventory for the deal.
+
+**Request**
+```
+POST https://gamegrid-ssp.com/deal-sync/v1/push
+Content-Type: application/json
+```
+
+**Payload**
+```json
+{
+  "id": "deal-game-mobile-q3-001",
+  "buyerdealid": "BUYER-2026-GAME-7710",
+  "name": "Q3 2026 Premium Mobile Gaming — Puzzle, Action & Racing",
+  "desc": "Buyer-initiated deal targeting premium mobile gaming inventory across three titles. Video and banner. US and UK. Mobile devices only.",
+  "origin": "gamegrid-ssp.com",
+  "seller": "gamegrid-ssp.com",
+  "created": "2026-05-10T14:00:00Z",
+  "buyerstatus": 0,
+  "currentrevision": {
+    "revisionid": "b1d4e7a3-9c2f-4b8e-a5d1-7f3c6e0b9a24",
+    "revisedate": "2026-05-10T14:00:00Z",
+    "revisedby": {
+      "partyid": "dsp-seat-ttd-001",
+      "contactemail": "trader@buyerco.com",
+      "role": 1
+    },
+    "negotiationstatus": 0,
+    "comment": "Buyer-initiated deal for Q3 mobile gaming package. Exhaustive app list — three titles across puzzle, action, and racing genres. Mobile only.",
+    "adtypes": [1, 2],
+    "auxdata": 3,
+    "pubcount": 2,
+    "dinventory": 1,
+    "terms": {
+      "startdate": "2026-07-01T00:00:00Z",
+      "enddate": "2026-09-30T23:59:59Z",
+      "countries": ["USA", "GBR"],
+      "dealfloor": 8.00,
+      "cur": "USD",
+      "pricetype": 2,
+      "guar": 0
+    },
+    "inventory": {
+      "contentcomp": {
+        "fidelity": 1,
+        "excl": [
+          { "cat": ["IAB25"] },
+          { "cat": ["IAB26"] }
+        ]
+      },
+      "devicecomp": {
+        "fidelity": 2,
+        "incl": [
+          { "devicetype": 4 },
+          { "devicetype": 5 }
+        ],
+        "excl": [
+          { "devicetype": 2 },
+          { "devicetype": 3 }
+        ]
+      },
+      "appcomp": {
+        "fidelity": 2,
+        "incl": [
+          {
+            "name": "Puzzle Quest Saga",
+            "bundle": "com.puzzlecraft.saga",
+            "domain": "puzzlecraftgames.com",
+            "cat": ["IAB9-30"],
+            "publisher": {
+              "id": "pub-pcg-001",
+              "name": "Puzzle Craft Games",
+              "domain": "puzzlecraftgames.com"
+            }
+          },
+          {
+            "name": "Battle Royale Arena",
+            "bundle": "com.stormgate.battlearena",
+            "domain": "stormgatestudios.com",
+            "cat": ["IAB9-30"],
+            "publisher": {
+              "id": "pub-sg-001",
+              "name": "Stormgate Studios",
+              "domain": "stormgatestudios.com"
+            }
+          },
+          {
+            "name": "Speed Rivals Racing",
+            "bundle": "com.driftworks.speedrivals",
+            "domain": "driftworks.io",
+            "cat": ["IAB9-30"],
+            "publisher": {
+              "id": "pub-dw-001",
+              "name": "Driftworks Interactive",
+              "domain": "driftworks.io"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+The seller receives this push and stores the deal with `sellerstatus=0` (PENDING).
+
+---
+
+### Step 2: Seller Accepts the Initial Proposal
+
+The seller reviews the terms and accepts by pushing a DealResponse to the buyer's push endpoint. By accepting, the seller confirms the buyer-proposed `id` as the canonical deal identifier that will appear in bid requests.
+
+**Request**
+```
+POST https://dsp.buyerco.com/deal-sync/v1/push
+Content-Type: application/json
+```
+
+**Payload**
+```json
+{
+  "dealid": "deal-game-mobile-q3-001",
+  "revisionid": "b1d4e7a3-9c2f-4b8e-a5d1-7f3c6e0b9a24",
+  "negotiationstatus": 1,
+  "respondedby": {
+    "partyid": "gamegrid-ssp.com",
+    "contactemail": "deals@gamegrid-ssp.com",
+    "role": 0
+  },
+  "responsedate": "2026-05-11T09:30:00Z",
+  "comment": "Accepted. All three titles confirmed in our system. Deal ID locked for bid requests."
+}
+```
+
+Both `sellerstatus` and `buyerstatus` transition to `1` (NOT_STARTED). When the July 1 flight date arrives, both transition to `2` (LIVE).
+
+---
+
+### Step 3: Seller Proposes a Revision (Console Expansion)
+
+The deal is live. The seller sees an opportunity to expand the deal into console gaming — two of the three titles (Battle Royale Arena and Speed Rivals Racing) are also available on Xbox and PlayStation. The seller pushes a Deal object with a delta `currentrevision` to the buyer's push endpoint.
+
+The revision updates two composition dimensions. `devicecomp` adds `devicetype: 6` (Connected Device / Game Console) to the inclusion list. `appcomp` adds two console app entries. Because array fields replace in full, both arrays restate the existing mobile entries alongside the new console additions. `contentcomp` is unchanged and omitted from the delta.
+
+**Request**
+```
+POST https://dsp.buyerco.com/deal-sync/v1/push
+Content-Type: application/json
+```
+
+**Payload**
+```json
+{
+  "id": "deal-game-mobile-q3-001",
+  "sellerstatus": 2,
+  "currentrevision": {
+    "revisionid": "e3a8f2c1-5d7b-4e9a-b4f6-2c8d0a1e5f37",
+    "revisedate": "2026-07-18T16:45:00Z",
+    "revisedby": {
+      "partyid": "gamegrid-ssp.com",
+      "contactemail": "deals@gamegrid-ssp.com",
+      "role": 0
+    },
+    "negotiationstatus": 0,
+    "comment": "Proposing console expansion. Battle Royale Arena and Speed Rivals Racing are now available on Xbox and PlayStation. Adding console device type and console app bundles.",
+    "inventory": {
+      "devicecomp": {
+        "fidelity": 2,
+        "incl": [
+          { "devicetype": 4 },
+          { "devicetype": 5 },
+          { "devicetype": 6 }
+        ],
+        "excl": [
+          { "devicetype": 2 },
+          { "devicetype": 3 }
+        ]
+      },
+      "appcomp": {
+        "fidelity": 2,
+        "incl": [
+          {
+            "name": "Puzzle Quest Saga",
+            "bundle": "com.puzzlecraft.saga",
+            "domain": "puzzlecraftgames.com",
+            "cat": ["IAB9-30"],
+            "publisher": {
+              "id": "pub-pcg-001",
+              "name": "Puzzle Craft Games",
+              "domain": "puzzlecraftgames.com"
+            }
+          },
+          {
+            "name": "Battle Royale Arena",
+            "bundle": "com.stormgate.battlearena",
+            "domain": "stormgatestudios.com",
+            "cat": ["IAB9-30"],
+            "publisher": {
+              "id": "pub-sg-001",
+              "name": "Stormgate Studios",
+              "domain": "stormgatestudios.com"
+            }
+          },
+          {
+            "name": "Speed Rivals Racing",
+            "bundle": "com.driftworks.speedrivals",
+            "domain": "driftworks.io",
+            "cat": ["IAB9-30"],
+            "publisher": {
+              "id": "pub-dw-001",
+              "name": "Driftworks Interactive",
+              "domain": "driftworks.io"
+            }
+          },
+          {
+            "name": "Battle Royale Arena — Console",
+            "bundle": "com.stormgate.battlearena.console",
+            "domain": "stormgatestudios.com",
+            "cat": ["IAB9-30"],
+            "publisher": {
+              "id": "pub-sg-001",
+              "name": "Stormgate Studios",
+              "domain": "stormgatestudios.com"
+            }
+          },
+          {
+            "name": "Speed Rivals Racing — Console",
+            "bundle": "com.driftworks.speedrivals.console",
+            "domain": "driftworks.io",
+            "cat": ["IAB9-30"],
+            "publisher": {
+              "id": "pub-dw-001",
+              "name": "Driftworks Interactive",
+              "domain": "driftworks.io"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+The buyer receives this push. The deal remains live under the original `liverevision` terms (mobile only) while the buyer evaluates the console expansion.
+
+---
+
+### Step 4: Buyer Accepts the Revision
+
+The buyer agrees to the console expansion and pushes a DealResponse to the seller's push endpoint. The accepted revision becomes the new `liverevision`, and the deal now covers both mobile and console inventory.
+
+**Request**
+```
+POST https://gamegrid-ssp.com/deal-sync/v1/push
+Content-Type: application/json
+```
+
+**Payload**
+```json
+{
+  "dealid": "deal-game-mobile-q3-001",
+  "revisionid": "e3a8f2c1-5d7b-4e9a-b4f6-2c8d0a1e5f37",
+  "negotiationstatus": 1,
+  "respondedby": {
+    "partyid": "dsp-seat-ttd-001",
+    "contactemail": "trader@buyerco.com",
+    "role": 1
+  },
+  "responsedate": "2026-07-19T10:00:00Z",
+  "comment": "Console expansion accepted. Updating targeting to include Xbox and PlayStation inventory."
+}
+```
+
+---
+
+### Step 5: Seller Pauses the Deal
+
+Several weeks into the expanded deal, the seller encounters a supply quality issue with one of the console app bundles and decides to pause the deal while they investigate. The seller pushes an updated Deal object to the buyer's push endpoint with `sellerstatus=4` (PAUSED).
+
+Because `sellerstatus=PAUSED` is the effective deal-dark signal — the seller controls bid request delivery — the deal is no longer eligible for auction regardless of the buyer's status. No revision is involved; this is a lifecycle state change only.
+
+**Request**
+```
+POST https://dsp.buyerco.com/deal-sync/v1/push
+Content-Type: application/json
+```
+
+**Payload**
+```json
+{
+  "id": "deal-game-mobile-q3-001",
+  "sellerstatus": 4
+}
+```
+
+The buyer receives this push and updates their record to reflect that the seller has paused the deal. The buyer's own `buyerstatus` may remain `2` (LIVE) — the buyer is still willing to traffic, but no bid requests will arrive while the seller side is paused.
+
+---
+
+### Step 6: Buyer Cancels the Deal
+
+After a week with the deal paused and no communication from the seller about resuming, the buyer decides to cancel. The buyer pushes an updated Deal object to the seller's push endpoint with `buyerstatus=6` (CANCELED).
+
+CANCELED is a terminal state. Per the coordination rules, the seller should mirror it by setting `sellerstatus=7` (CANCELED) upon receiving this push. To reactivate this inventory relationship, the parties would need to create a new deal.
+
+**Request**
+```
+POST https://gamegrid-ssp.com/deal-sync/v1/push
+Content-Type: application/json
+```
+
+**Payload**
+```json
+{
+  "id": "deal-game-mobile-q3-001",
+  "buyerstatus": 6
+}
+```
+
+The seller receives this push, validates the terminal state, and transitions `sellerstatus` from `4` (PAUSED) to `7` (CANCELED). The deal is now closed on both sides.

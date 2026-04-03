@@ -2,15 +2,16 @@
 
 ## Table of Contents
 
-- [Scenario 1: Saleshouse Audience Deal Across Multiple Web Publishers](#scenario-1-saleshouse-audience-deal-across-multiple-web-publishers)
+- [Scenario 1: Saleshouse Library Deal Across Multiple Web Publishers](#scenario-1-saleshouse-library-deal-across-multiple-web-publishers)
   - [Step 1: Saleshouse Creates the Deal](#step-1-saleshouse-creates-the-deal)
-  - [Step 2: Seller Polls Buyer's Status Endpoint](#step-2-seller-polls-buyers-status-endpoint)
+  - [Step 2: Seller Polls Buyer's Endpoint (Accepted, Not Yet Live)](#step-2-seller-polls-buyers-endpoint-accepted-not-yet-live)
+  - [Step 3: Seller Polls Buyer's Endpoint (Live, Multiple Seats Active)](#step-3-seller-polls-buyers-endpoint-live-multiple-seats-active)
 - [Scenario 2: Seller-Initiated CTV Deal with Buyer Revision](#scenario-2-seller-initiated-ctv-deal-with-buyer-revision)
   - [Step 1: Seller Creates the Deal](#step-1-seller-creates-the-deal)
   - [Step 2: Buyer Accepts the Initial Proposal](#step-2-buyer-accepts-the-initial-proposal)
   - [Step 3: Buyer Proposes a Revision](#step-3-buyer-proposes-a-revision)
   - [Step 4: Seller Accepts the Revision](#step-4-seller-accepts-the-revision)
-  - [Step 5: Buyer Polls Seller's Status Endpoint](#step-5-buyer-polls-sellers-status-endpoint)
+  - [Step 5: Buyer Polls Seller's Endpoint](#step-5-buyer-polls-sellers-endpoint)
 - [Scenario 3: Buyer-Initiated Mobile Gaming Deal with Seller Revision](#scenario-3-buyer-initiated-mobile-gaming-deal-with-seller-revision)
   - [Step 1: Buyer Creates the Deal](#step-1-buyer-creates-the-deal)
   - [Step 2: Seller Accepts the Initial Proposal](#step-2-seller-accepts-the-initial-proposal-1)
@@ -21,20 +22,22 @@
 
 ---
 
-<a name="scenario-1-saleshouse-audience-deal-across-multiple-web-publishers"></a>
-## Scenario 1: Saleshouse Audience Deal Across Multiple Web Publishers
+<a name="scenario-1-saleshouse-library-deal-across-multiple-web-publishers"></a>
+## Scenario 1: Saleshouse Library Deal Across Multiple Web Publishers
 
-A technical saleshouse (PremiumWeb Group, `premiumwebgroup.com`) represents three cooking and recipe web publishers and packages their combined inventory against an in-market auto intender audience defined using IAB Audience Taxonomy 1.1 signals. The deal covers banner and outstream video creatives. Because the saleshouse may adjust its publisher roster over the flight, inventory is dynamic (`dinventory=2`). The saleshouse charges a CPM curation fee for the audience service.
+A technical saleshouse (PremiumWeb Group, `premiumwebgroup.com`) represents three cooking and recipe web publishers and creates a **library deal** (also known as an evergreen deal) packaging their combined inventory against an in-market auto intender audience defined using IAB Audience Taxonomy 1.1 signals. The deal covers banner and outstream video creatives. Because the saleshouse may adjust its publisher roster over the flight, inventory is dynamic (`dinventory=2`). The saleshouse charges a CPM curation fee for the audience service.
 
-This scenario uses the **baseline seller-push model**: the saleshouse pushes the deal to the buyer's endpoint, then polls the buyer's status endpoint to learn when the buyer has accepted. The buyer does not implement a push endpoint — they communicate acceptance by updating the deal state on their side, which the seller discovers on its next poll.
+As a library deal, there is no end date and no seat restrictions — both `wseat` and `bseat` are omitted, signaling that any buyer seat may target this deal without prior approval. Individual seats appear in `seatstatuses` as they begin engaging with the deal, skipping the `status=0` (PENDING) approval gate.
+
+This scenario uses the **baseline seller-push model**: the saleshouse pushes the deal to the buyer's endpoint, then polls the buyer's endpoint (GET) to learn when the buyer has accepted. The buyer does not implement a push endpoint — they communicate acceptance by updating the deal state on their side, which the seller discovers on its next poll. A second poll after the deal goes live demonstrates the multi-seat pattern typical of library deals.
 
 ---
 
 ### Step 1: Saleshouse Creates the Deal
 
-The saleshouse pushes the initial deal to the buyer's push endpoint. The audience composition (`usercomp`) is the primary targeting signal — content and device composition are included but play a supporting role (brand safety and format eligibility respectively). Because no revision has yet been accepted, `currentrevision` carries the full deal specification.
+The saleshouse pushes the initial library deal to the buyer's push endpoint. The audience composition (`usercomp`) is the primary targeting signal — content and device composition are included but play a supporting role (brand safety and format eligibility respectively). Because no revision has yet been accepted, `currentrevision` carries the full deal specification.
 
-`sitecomp` is included with `fidelity=1` (indicative) to identify the current publisher roster and support supply chain authorization, with the understanding that the list may change over the flight.
+`sitecomp` is included with `fidelity=1` (indicative) to identify the current publisher roster and support supply chain authorization, with the understanding that the list may change over the flight. Note that `enddate` is omitted (evergreen), and neither `wseat` nor `bseat` is present — any buyer seat may target this deal.
 
 **Request**
 ```
@@ -47,8 +50,8 @@ Content-Type: application/json
 {
   "id": "deal-web-auto-q2-001",
   "sellerdealid": "PWG-2026-AUTO-887",
-  "name": "Q2 2026 In-Market Auto Intenders — Web",
-  "desc": "Multi-publisher web deal targeting in-market auto intenders via IAB Audience Taxonomy signals, served across cooking and recipe publisher inventory. Banner and outstream video. Publisher roster subject to change over flight.",
+  "name": "In-Market Auto Intenders — Web (Library Deal)",
+  "desc": "Evergreen multi-publisher web deal targeting in-market auto intenders via IAB Audience Taxonomy signals, served across cooking and recipe publisher inventory. Banner and outstream video. Publisher roster subject to change. Open to all buyer seats.",
   "origin": "adxchange.io",
   "seller": "premiumwebgroup.com",
   "created": "2026-03-24T08:00:00Z",
@@ -67,14 +70,13 @@ Content-Type: application/json
       "role": 0
     },
     "negotiationstatus": 0,
-    "comment": "Initial proposal. Audience defined via IAB Audience Taxonomy 1.1 in-market auto intender segments, overlaid on cooking and recipe publisher inventory. Publisher list subject to change; content and device dimensions are indicative.",
+    "comment": "Initial proposal. Evergreen library deal — audience defined via IAB Audience Taxonomy 1.1 in-market auto intender segments, overlaid on cooking and recipe publisher inventory. Publisher list subject to change; content and device dimensions are indicative. Open to all buyer seats.",
     "adtypes": [1, 2],
     "auxdata": 2,
     "pubcount": 2,
     "dinventory": 2,
     "terms": {
       "startdate": "2026-04-01T00:00:00Z",
-      "enddate": "2026-06-30T23:59:59Z",
       "countries": ["USA"],
       "dealfloor": 4.50,
       "cur": "USD",
@@ -159,13 +161,13 @@ Content-Type: application/json
 }
 ```
 
-The buyer receives this push and stores the deal with `buyerstatus=0` (PENDING). In the baseline model, the buyer reviews the terms internally and communicates their verdict by updating their status on their side — no push to the seller is required.
+The buyer receives this push and stores the deal with `buyerstatus=0` (PENDING). Because this is a library deal with no seat restrictions, the buyer's system makes it available to all seats once accepted. In the baseline model, the buyer reviews the terms internally and communicates their verdict by updating their status on their side — no push to the seller is required.
 
 ---
 
-### Step 2: Seller Polls Buyer's Status Endpoint
+### Step 2: Seller Polls Buyer's Endpoint (Accepted, Not Yet Live)
 
-The seller periodically polls the buyer's status endpoint to check whether the deal has been accepted. On this poll, the buyer has accepted — their system has updated `negotiationstatus` on `currentrevision` to ACCEPTED and promoted it to `liverevision`. The response includes the fully merged live state in the top-level `terms` and `inventory` fields, and `currentrevision` is absent (no pending proposal).
+The seller periodically polls the buyer's endpoint (GET) to check whether the deal has been accepted. On this poll, the buyer has accepted — their system has updated `negotiationstatus` on `currentrevision` to ACCEPTED and promoted it to `liverevision`. The response includes the fully merged live state in the top-level `terms` and `inventory` fields, and `currentrevision` is absent (no pending proposal). Because this is the buyer's endpoint, the response includes a `seatstatuses` array with per-seat operational detail. At this point one seat has already opted into the library deal, skipping `status=0` (PENDING) and entering directly at `status=1` (NOT_STARTED).
 
 **Request**
 ```
@@ -177,8 +179,8 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
 {
   "id": "deal-web-auto-q2-001",
   "sellerdealid": "PWG-2026-AUTO-887",
-  "name": "Q2 2026 In-Market Auto Intenders — Web",
-  "desc": "Multi-publisher web deal targeting in-market auto intenders via IAB Audience Taxonomy signals, served across cooking and recipe publisher inventory. Banner and outstream video. Publisher roster subject to change over flight.",
+  "name": "In-Market Auto Intenders — Web (Library Deal)",
+  "desc": "Evergreen multi-publisher web deal targeting in-market auto intenders via IAB Audience Taxonomy signals, served across cooking and recipe publisher inventory. Banner and outstream video. Publisher roster subject to change. Open to all buyer seats.",
   "origin": "adxchange.io",
   "seller": "premiumwebgroup.com",
   "created": "2026-03-24T08:00:00Z",
@@ -194,7 +196,6 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
   },
   "terms": {
     "startdate": "2026-04-01T00:00:00Z",
-    "enddate": "2026-06-30T23:59:59Z",
     "countries": ["USA"],
     "dealfloor": 4.50,
     "cur": "USD",
@@ -275,6 +276,12 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
       ]
     }
   },
+  "seatstatuses": [
+    {
+      "buyerseatid": "seat-ttd-main-001",
+      "status": 1
+    }
+  ],
   "liverevision": {
     "revisionid": "f2e9c4b1-7a3d-4f8e-b6c2-9d5a1e7f4b08",
     "revisedate": "2026-03-24T08:00:00Z",
@@ -284,12 +291,155 @@ GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
       "role": 0
     },
     "negotiationstatus": 1,
-    "comment": "Initial proposal. Audience defined via IAB Audience Taxonomy 1.1 in-market auto intender segments, overlaid on cooking and recipe publisher inventory. Publisher list subject to change; content and device dimensions are indicative."
+    "comment": "Initial proposal. Evergreen library deal — audience defined via IAB Audience Taxonomy 1.1 in-market auto intender segments, overlaid on cooking and recipe publisher inventory. Publisher list subject to change; content and device dimensions are indicative. Open to all buyer seats."
   }
 }
 ```
 
-`buyerstatus=1` (NOT_STARTED) — the deal has been accepted but the flight start date of April 1 has not yet been reached. The seller can begin preparing bid request targeting against `deal.id`. `liverevision` confirms the accepted terms; `currentrevision` is absent as there is no pending proposal.
+`buyerstatus=1` (NOT_STARTED) — the deal has been accepted but the flight start date of April 1 has not yet been reached. One seat (`seat-ttd-main-001`) has already opted into the library deal at `status=1` (NOT_STARTED), skipping the approval gate since library deals are open to all seats. The seller can begin preparing bid request targeting against `deal.id`. `liverevision` confirms the accepted terms; `currentrevision` is absent as there is no pending proposal.
+
+---
+
+### Step 3: Seller Polls Buyer's Endpoint (Live, Multiple Seats Active)
+
+The seller polls the buyer's endpoint again after the deal's start date has passed. The deal is now live: `buyerstatus=2` (LIVE). Three buyer seats have opted into the library deal. Two are actively delivering (`status=4`, ACTIVE), and one has been paused by the buyer (`status=5`, PAUSED). Because library deals are open to all seats, new seats may appear in `seatstatuses` at any time without requiring seller approval.
+
+**Request**
+```
+GET https://dsp.buyerco.com/deal-sync/v1/deals/deal-web-auto-q2-001
+```
+
+**Response**
+```json
+{
+  "id": "deal-web-auto-q2-001",
+  "sellerdealid": "PWG-2026-AUTO-887",
+  "name": "In-Market Auto Intenders — Web (Library Deal)",
+  "desc": "Evergreen multi-publisher web deal targeting in-market auto intenders via IAB Audience Taxonomy signals, served across cooking and recipe publisher inventory. Banner and outstream video. Publisher roster subject to change. Open to all buyer seats.",
+  "origin": "adxchange.io",
+  "seller": "premiumwebgroup.com",
+  "created": "2026-03-24T08:00:00Z",
+  "buyerstatus": 2,
+  "adtypes": [1, 2],
+  "auxdata": 2,
+  "pubcount": 2,
+  "dinventory": 2,
+  "curation": {
+    "curator": "premiumwebgroup.com",
+    "cdealid": "PWG-CUR-2026-AUTO-887",
+    "curfeetype": 3
+  },
+  "terms": {
+    "startdate": "2026-04-01T00:00:00Z",
+    "countries": ["USA"],
+    "dealfloor": 4.50,
+    "cur": "USD",
+    "pricetype": 2,
+    "guar": 0
+  },
+  "inventory": {
+    "usercomp": {
+      "fidelity": 2,
+      "incl": [
+        {
+          "name": "premiumwebgroup.com",
+          "ext": { "segtax": 4 },
+          "segment": [
+            { "id": "284" },
+            { "id": "285" },
+            { "id": "287" }
+          ]
+        },
+        {
+          "name": "datapartner.com",
+          "ext": { "segtax": 4 },
+          "segment": [
+            { "id": "284" },
+            { "id": "286" }
+          ]
+        }
+      ]
+    },
+    "contentcomp": {
+      "fidelity": 1,
+      "excl": [
+        { "cat": ["IAB25"] },
+        { "cat": ["IAB26"] }
+      ]
+    },
+    "devicecomp": {
+      "fidelity": 2,
+      "incl": [
+        { "devicetype": 2 },
+        { "devicetype": 1 }
+      ],
+      "excl": [
+        { "devicetype": 3 },
+        { "devicetype": 7 }
+      ]
+    },
+    "sitecomp": {
+      "fidelity": 1,
+      "incl": [
+        {
+          "domain": "therecipehub.com",
+          "cat": ["IAB8"],
+          "publisher": {
+            "id": "pub-trh-001",
+            "name": "The Recipe Hub",
+            "domain": "therecipehub.com"
+          }
+        },
+        {
+          "domain": "homechefweekly.com",
+          "cat": ["IAB8", "IAB8-12"],
+          "publisher": {
+            "id": "pub-hcw-001",
+            "name": "Home Chef Weekly",
+            "domain": "homechefweekly.com"
+          }
+        },
+        {
+          "domain": "mealinspo.com",
+          "cat": ["IAB8", "IAB8-8"],
+          "publisher": {
+            "id": "pub-mi-001",
+            "name": "Meal Inspo",
+            "domain": "mealinspo.com"
+          }
+        }
+      ]
+    }
+  },
+  "seatstatuses": [
+    {
+      "buyerseatid": "seat-ttd-main-001",
+      "status": 4
+    },
+    {
+      "buyerseatid": "seat-ttd-west-047",
+      "status": 4
+    },
+    {
+      "buyerseatid": "seat-ttd-east-012",
+      "status": 5
+    }
+  ],
+  "liverevision": {
+    "revisionid": "f2e9c4b1-7a3d-4f8e-b6c2-9d5a1e7f4b08",
+    "revisedate": "2026-03-24T08:00:00Z",
+    "revisedby": {
+      "partyid": "premiumwebgroup.com",
+      "contactemail": "programmatic@premiumwebgroup.com",
+      "role": 0
+    },
+    "negotiationstatus": 1,
+    "comment": "Initial proposal. Evergreen library deal — audience defined via IAB Audience Taxonomy 1.1 in-market auto intender segments, overlaid on cooking and recipe publisher inventory. Publisher list subject to change; content and device dimensions are indicative. Open to all buyer seats."
+  }
+}
+```
+
+`buyerstatus=2` (LIVE) — the deal is actively delivering. Three seats have opted in: `seat-ttd-main-001` and `seat-ttd-west-047` are at `status=4` (ACTIVE), meaning they are bidding and winning impressions; `seat-ttd-east-012` is at `status=5` (PAUSED), indicating the buyer has temporarily paused that seat's participation. The seller can use this information to understand demand distribution across the library deal's buyer base. Because this is an evergreen deal with no `enddate`, it will remain live indefinitely until one party moves it to a terminal state.
 
 ---
 
@@ -555,9 +705,9 @@ Content-Type: application/json
 
 ---
 
-### Step 5: Buyer Polls Seller's Status Endpoint
+### Step 5: Buyer Polls Seller's Endpoint
 
-The buyer queries the seller's status endpoint to confirm the current state of the deal. Because a `liverevision` is now established and there is no pending proposal, `currentrevision` is absent — `liverevision` alone fully describes the current terms. The top-level `terms` and `inventory` reflect the fully merged live state.
+The buyer queries the seller's endpoint (GET) to confirm the current state of the deal. Because a `liverevision` is now established and there is no pending proposal, `currentrevision` is absent — `liverevision` alone fully describes the current terms. The top-level `terms` and `inventory` reflect the fully merged live state.
 
 **Request**
 ```

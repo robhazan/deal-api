@@ -22,8 +22,6 @@
   - [Object: DealRevision](#object-dealrevision)
   - [Object: DealActor](#object-dealactor)
   - [Object: DealResponse](#object-dealresponse)
-- [Status Endpoint](#receiver-endpoint)
-  - [Object: BuyerSeat](#object-buyerseat)
   - [Object: SeatStatus](#object-seatstatus)
 - [Implementation Guidance](#implementation-guidance)
   - [Matching Bid Requests to Deals](#matching-bid-requests-to-deals)
@@ -97,12 +95,13 @@ Version 1.1 introduces the following changes from Version 1.0:
 - **Inventory Composition Model:** The `Inventory` object has been redesigned to support a richer, composition-based approach to describing inventory. The flat attribute model from v1.0 is replaced by five composition sub-objects — `ContentComposition`, `DeviceComposition`, `UserComposition`, `SiteComposition`, and `AppComposition` — each supporting explicit inclusion and exclusion arrays, enabling deals to be described with greater precision and expressiveness. Four sub-objects (`contentcomp`, `devicecomp`, `sitecomp`, `appcomp`) use arrays of their corresponding OpenRTB 2.6 top-level objects. `UserComposition` uses arrays of OpenRTB 2.6 Data objects (the `user.data` structure), scoped to curated audience cohort signals per the IAB Tech Lab Curated Audiences standard.
 - **Bidirectional API Model:** Version 1.1 extends the API to support an optional bidirectional push model. Either party — seller (e.g., SSP) or buyer (e.g., DSP) — may now initiate a deal or propose a revision by pushing to the other party's endpoint, provided both parties have agreed to support bidirectional communication. A seller-push-only implementation remains fully compliant. The `Deal` object gains `sellerdealid` and `buyerdealid` fields to allow each party to maintain their own namespace identifier for a deal alongside the canonical bid-stream `id`.
 - **Deal Revision Workflow:** Version 1.1 introduces a structured revision lifecycle for deal terms, replacing the need for ad-hoc differential overrides. All updates to deal terms — whether minor adjustments or substantive renegotiations — flow through the same revision workflow: a party proposes a revision, and the counterparty accepts or rejects it. The `Deal` object gains `currentrevision`, `liverevision`, `sellerstatus`, and `buyerstatus` fields. The new `DealRevision`, `DealActor`, and `DealResponse` objects provide a standardized mechanism for either party to propose, accept, or reject changes to deal terms, with a clear record of what was changed and by whom. `sellerstatus` is redefined in v1.1 with a lifecycle-aligned enumeration; `buyerstatus` is added as its buyer-side counterpart. See [Deal Revision Workflow](#deal-revision-workflow) for implementation guidance.
+- **Unified Deal Endpoint:** The separate Status Endpoint from v1.0 is deprecated. The Deal API endpoint now supports both POST (for pushes and DealResponses) and GET (to retrieve the current state of a deal). GET responses return the Deal object directly, reflecting the responding party's current lifecycle state. The v1.0 `BuyerSeat` wrapper object is removed; per-seat status detail is now carried in a `seatstatuses` array on the Deal object, populated by the buyer's endpoint. The v1.0 `BuyerStatus` object is renamed to `SeatStatus`.
 
 ---
 
 <a name="deal-api-specification"></a>
 # Deal API Specification
-An HTTP POST endpoint for accepting deal data. At minimum, the buyer system must implement this endpoint to receive deals and revisions pushed by the seller (the traditional seller-push model). When both parties agree to support bidirectional communication, the seller system should also implement this endpoint to receive buyer-initiated revisions and DealResponses. Configuration of push calls — including endpoint discovery and authentication — is out of scope for this specification and is the responsibility of each implementing party.
+The Deal API supports two operations: **POST** for pushing deal data (new deals, revisions, and DealResponses) and **GET** for retrieving the current state of a specific deal. At minimum, the buyer system must implement both operations — POST to receive deals and revisions pushed by the seller, and GET to allow the seller to query deal status. When both parties agree to support bidirectional communication, the seller system should also implement both operations. GET responses return the Deal object reflecting the responding party's current state. Configuration of endpoints — including URL paths, endpoint discovery, and authentication — is out of scope for this specification and is the responsibility of each implementing party.
 
 <a name="object-deal"></a>
 ## Object: Deal
@@ -115,7 +114,7 @@ An HTTP POST endpoint for accepting deal data. At minimum, the buyer system must
 | `name` | string, recommended | Name of the deal as assigned by the initiating party. Note: This name may be displayed to the counterparty and should be chosen accordingly. |
 | `created` | string | UTC timestamp in seconds in ISO-8601 of when the deal was first created. |
 | `sellerstatus` | int | Lifecycle status of the deal from the seller's perspective:<br> `0` = pending — deal has been pushed, awaiting counterparty acceptance<br> `1` = not started — deal has been accepted but the flight start date has not yet been reached<br> `2` = live — deal is active and the seller is trafficking against it<br> `3` = live, not spending — deal is live but no spend has been observed within an expected window (seller diagnostic)<br> `4` = paused — seller has temporarily suspended the deal<br> `5` = completed — deal has reached its end date or delivery goal<br> `6` = expired — deal lapsed without being activated<br> `7` = canceled — deal was terminated prior to completion<br><br>The seller populates this field in all Deal pushes and status responses. See [Deal Revision Workflow](#deal-revision-workflow) for transition rules. |
-| `buyerstatus` | int | Lifecycle status of the deal from the buyer's perspective:<br> `0` = pending — deal received, awaiting buyer review or acceptance<br> `1` = not started — deal has been accepted but the flight start date has not yet been reached<br> `2` = live — buyer is actively trafficking against the deal<br> `3` = paused — buyer has temporarily suspended their use of the deal<br> `4` = completed — deal has reached its end date or delivery goal<br> `5` = expired — deal lapsed without being activated<br> `6` = canceled — deal was terminated prior to completion<br><br>The buyer populates this field in Deal pushes (bidirectional model) and status responses. In the baseline model the seller learns `buyerstatus` by polling the buyer's status endpoint. See [Deal Revision Workflow](#deal-revision-workflow) for transition rules. |
+| `buyerstatus` | int | Lifecycle status of the deal from the buyer's perspective:<br> `0` = pending — deal received, awaiting buyer review or acceptance<br> `1` = not started — deal has been accepted but the flight start date has not yet been reached<br> `2` = live — buyer is actively trafficking against the deal<br> `3` = paused — buyer has temporarily suspended their use of the deal<br> `4` = completed — deal has reached its end date or delivery goal<br> `5` = expired — deal lapsed without being activated<br> `6` = canceled — deal was terminated prior to completion<br><br>The buyer populates this field in Deal pushes (bidirectional model) and status responses. In the baseline model the seller learns `buyerstatus` by polling the buyer's endpoint (GET). See [Deal Revision Workflow](#deal-revision-workflow) for transition rules. |
 | `currentrevision` | DealRevision object | The pending proposed revision, present only when a revision is in PROPOSED state (`negotiationstatus=0`). Absent when no revision is outstanding (i.e., when the deal is quiescent and `liverevision` fully describes the current terms). **Required on initial push** (before any revision has been accepted) since `liverevision` is not yet established. See [Object: DealRevision](#object-dealrevision) and [Deal Revision Workflow](#deal-revision-workflow) for additional detail. |
 | `liverevision` | DealRevision object | The last revision accepted by the counterparty (`negotiationstatus=1`). Absent if no revision has yet been accepted. When `currentrevision` is present, its delta fields represent changes relative to `liverevision`. See [Deal Revision Workflow](#deal-revision-workflow) for additional detail. |
 | `origin` | string, **required** | The advertising system domain of the business entity that will receive bid responses for the deal (typically the SSP running the auction). This field identifies the auction operator, not the party who initiated the deal. |
@@ -130,6 +129,7 @@ An HTTP POST endpoint for accepting deal data. At minimum, the buyer system must
 | `terms` | object | Terms of the deal, reflecting the current live state (i.e., the terms from `liverevision`). **Required when `liverevision` is present.** May be omitted on initial push when no revision has yet been accepted, in which case receivers should derive the deal terms from `currentrevision`. See [Object: Terms](#object-terms) for additional detail. |
 | `inventory` | object | Information about the inventory included in the deal, reflecting the current live state. **Required when `liverevision` is present.** May be omitted on initial push when no revision has yet been accepted, in which case receivers should derive the inventory from `currentrevision`. For static inventory deals (`dinventory=1`), all five composition dimensions may be used. For dynamic inventory deals (`dinventory=2`), the non-site/app dimensions (`contentcomp`, `devicecomp`, `usercomp`) remain meaningful and are encouraged; `sitecomp` and `appcomp` may also be included but should generally carry `fidelity=1` unless the seller commits to keeping them current via the revision workflow. <br><br>See [Object: Inventory](#object-inventory) and [Relationship to dinventory](#inventory-and-dinventory) for additional detail. |
 | `curation` | object | Information about the curation package if applicable. <br><br>See [Object: Curation](#object-curation) for additional detail. |
+| `seatstatuses` | SeatStatus object array | Per-seat operational status of the deal within the buyer's system. Populated by the buyer's endpoint on GET responses. Each entry describes the state of the deal for a specific buyer seat (e.g., pending approval, active, paused). The seller's endpoint does not populate this field. See [Object: SeatStatus](#object-seatstatus) for additional detail. |
 | `ext` | object | Placeholder for deal-specific extensions |
 
 <a name="object-terms"></a>
@@ -142,7 +142,7 @@ An HTTP POST endpoint for accepting deal data. At minimum, the buyer system must
 | `countries` | string array | An array of country codes in which the deal is available, where country code is a string using ISO-3166-3. If this is empty or missing, the deal is assumed to apply to all countries. |
 | `dealfloor` | float | Minimum bid for impressions for this deal expressed in CPM. Unless `pricetype` is Fixed, this should be used as guidance to buyers. <br><br> [See Implementation Guidance for additional detail](#price-and-floor-guidance) |
 | `cur` | string; default "USD" | Bid currency using ISO-4217 alpha codes. |
-| `guar` | int | Indicates that the deal is of type guaranteed and the bidder must bid on the deal, where 0 = not a guaranteed deal, 1 = guaranteed deal. |
+| `guar` | int | Deal guarantee type where:<br> `0` = Not Guaranteed — the deal is biddable but the buyer is not obligated to bid<br> `1` = Guaranteed — the deal is guaranteed and the bidder must bid on the deal<br> `2` = Biddable Guaranteed — the deal is guaranteed with a commitment to deliver, but the buyer bids competitively rather than at a fixed price |
 | `pricetype` | int, default 2 | Deal Price Type where:<br> `0` = Dynamic (ie. auction type will be provided by `request.at` attribute in OpenRTB Bid Request)<br> `1` = First Price<br> `2` = Second Price Plus<br> `3` = Fixed Price<br>Exchange-specific auction types can be defined using values 500 and greater. |
 | `units` | int | Number of units (impressions) over the specified start and end date of the deal. If the deal is guaranteed, this number should be provided. If the deal is not guaranteed this may be omitted. |
 | `totalcost` | float | The total cost over the specified start and end date of the deal. If the deal is guaranteed, this value should be provided. If the deal is not guaranteed this may be omitted. <br><br> [See Implementation Guidance for additional detail](#price-and-floor-guidance) |
@@ -313,34 +313,18 @@ A DealResponse communicates a party's acceptance or rejection of a proposed revi
 | `comment` | string | Optional human-readable note from the responding party explaining the acceptance or rejection. |
 | `ext` | object | Placeholder for response-specific extensions. |
 
----
-
-<a name="receiver-endpoint"></a>
-# Status Endpoint
-An HTTP GET endpoint for requesting current information about a specific deal. At minimum, the buyer system must implement this endpoint so the seller can query deal status. When both parties agree to support bidirectional communication, the seller system should also implement this endpoint to allow the buyer to query deal state.
-
-<a name="object-buyerseat"></a>
-## Object: BuyerSeat
-
-Information about the status of the deal in the buying system at a seat level.
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `version` | string, **required** | Version of the Deal API in use |
-| `id` | string, **required** | A unique identifier for the deal as passed in the initial push that this response is referring to. This should always be the same id as `deal.id` |
-| `seatstatuses` | object array | Information about the buying seat where the Deal will be trafficked. (Renamed from `buyerstatus` in v1.1 to avoid collision with the Deal-level `buyerstatus` lifecycle field.) |
-| `ext` | object | Placeholder for deal-specific extensions |
-
 <a name="object-seatstatus"></a>
 ## Object: SeatStatus
 
-Information about the status of the deal at a seat level in the buying system. (Renamed from `BuyerStatus` in v1.1.)
+Per-seat operational status of the deal within the buyer's system. Returned as entries in the `Deal.seatstatuses` array when the buyer's endpoint responds to a GET request. (This object was named `BuyerStatus` in v1.0 and was returned inside a `BuyerSeat` wrapper on the separate Status Endpoint. In v1.1, the Status Endpoint is deprecated and per-seat detail is carried directly on the Deal object.)
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `buyerseatid` | string | Seat ID in the buying system that the response refers to |
-| `status` | int | Status of the deal in the buying system:<br> `0` = pending approval<br> `1` = buyer has approved (ie. non PG deal is ready for bid requests)<br> `2` = buyer has rejected<br> `3` = ready to serve (ie. deal is in a campaign - ready to receive bid requests, relevant especially for PG deals)<br> `4` = active (i.e. deal is actively serving impressions)<br> `5` = paused<br> `6` = complete (ie. buying system shows deal has completed)|
-| `ext` | object | Placeholder for deal-specific extensions |
+| `status` | int | Operational status of the deal for this seat in the buying system:<br> `0` = pending approval<br> `1` = buyer has approved (ie. non PG deal is ready for bid requests)<br> `2` = buyer has rejected<br> `3` = ready to serve (ie. deal is in a campaign - ready to receive bid requests, relevant especially for PG deals)<br> `4` = active (i.e. deal is actively serving impressions)<br> `5` = paused<br> `6` = complete (ie. buying system shows deal has completed)|
+| `ext` | object | Placeholder for seat-specific extensions |
+
+The `seatstatuses` array includes only seats that have actively engaged with the deal. Seats that have not interacted with the deal are simply absent from the array. For open deals where both `wseat` and `bseat` are omitted on the Deal object (e.g., library or evergreen deals with no per-seat approval gate), seats may begin at `status=1` (approved) or `status=3` (ready to serve) rather than `status=0` (pending approval), since no approval step is required.
 
 ---
 
@@ -366,9 +350,9 @@ Supply Chain validation should always be done using Object: Supply Chain from Op
 <a name="sending-and-receiving-information"></a>
 ## Sending and Receiving Information
 
-**Baseline (seller-push) model:** At minimum, the seller initiates deals and proposes revisions by pushing Deal objects to the buyer's push endpoint, and periodically polls the buyer's status endpoint to retrieve the current state of the deal. The buyer must implement the push endpoint (to receive incoming deals and revisions) and the status endpoint (to respond to queries). In this model, the buyer communicates acceptance or rejection by updating the `negotiationstatus` on `currentrevision` in the Deal object returned via the status endpoint. The seller detects the buyer's verdict on its next poll. This model does not require the seller to implement any endpoint.
+**Baseline (seller-push) model:** At minimum, the seller initiates deals and proposes revisions by pushing Deal objects to the buyer's endpoint (POST), and periodically polls the buyer's endpoint (GET) to retrieve the current state of the deal. The buyer must implement both POST (to receive incoming deals and revisions) and GET (to respond to status queries). In this model, the buyer communicates acceptance or rejection by updating the `negotiationstatus` on `currentrevision` in the Deal object returned via GET. The seller detects the buyer's verdict on its next poll. This model does not require the seller to implement any endpoint.
 
-**Bidirectional model (optional):** When both parties agree to support bidirectionality, either party may initiate a deal or propose a revision by pushing to the counterparty's push endpoint, and both parties implement both the push and status endpoints. In this model, the buyer can also push DealResponse objects directly to the seller's push endpoint for faster acceptance/rejection notification, and may initiate deals or propose revisions of their own. The conflict resolution rules described in [Revision Semantics](#revision-semantics) (simultaneous proposals, stale acceptance) apply only when both parties are actively pushing.
+**Bidirectional model (optional):** When both parties agree to support bidirectionality, either party may initiate a deal or propose a revision by pushing (POST) to the counterparty's endpoint, and both parties implement both POST and GET. In this model, the buyer can also push DealResponse objects directly to the seller's endpoint for faster acceptance/rejection notification, and may initiate deals or propose revisions of their own. The conflict resolution rules described in [Revision Semantics](#revision-semantics) (simultaneous proposals, stale acceptance) apply only when both parties are actively pushing.
 
 **Push endpoint message types:** The push endpoint accepts two message types via HTTP POST:
 
@@ -592,7 +576,7 @@ Proposing a revision on a deal that is already LIVE, PAUSED, or LIVE_NOT_SPENDIN
 <a name="full-history-query-parameter"></a>
 ### `full_history` Query Parameter
 
-By default, the Deal API returns only `currentrevision` and `liverevision` on the Deal object. When the counterparty's status endpoint supports it, either party may append `full_history=1` to the query parameters to request the complete ordered array of all prior revisions for the deal. This allows either party to audit the full negotiation history — including all PROPOSED, REJECTED, and SUPERSEDED revisions — when needed for dispute resolution or deal analysis. Implementations are not required to retain or serve full revision history, but are encouraged to do so.
+By default, the Deal API returns only `currentrevision` and `liverevision` on the Deal object. When the counterparty's endpoint supports it, either party may append `full_history=1` to the GET query parameters to request the complete ordered array of all prior revisions for the deal. This allows either party to audit the full negotiation history — including all PROPOSED, REJECTED, and SUPERSEDED revisions — when needed for dispute resolution or deal analysis. Implementations are not required to retain or serve full revision history, but are encouraged to do so.
 
 <a name="example-workflow"></a>
 ### Example Workflow

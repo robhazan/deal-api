@@ -24,7 +24,7 @@
   - [Object: DealResponse](#object-dealresponse)
 - [Status Endpoint](#receiver-endpoint)
   - [Object: BuyerSeat](#object-buyerseat)
-  - [Object: BuyerStatus](#object-buyerstatus)
+  - [Object: SeatStatus](#object-seatstatus)
 - [Implementation Guidance](#implementation-guidance)
   - [Matching Bid Requests to Deals](#matching-bid-requests-to-deals)
   - [Authorization](#authorization)
@@ -331,10 +331,10 @@ Information about the status of the deal in the buying system at a seat level.
 | `seatstatuses` | object array | Information about the buying seat where the Deal will be trafficked. (Renamed from `buyerstatus` in v1.1 to avoid collision with the Deal-level `buyerstatus` lifecycle field.) |
 | `ext` | object | Placeholder for deal-specific extensions |
 
-<a name="object-buyerstatus"></a>
-## Object: BuyerStatus
+<a name="object-seatstatus"></a>
+## Object: SeatStatus
 
-Information about the status of the deal at a seat level in the buying system.
+Information about the status of the deal at a seat level in the buying system. (Renamed from `BuyerStatus` in v1.1.)
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
@@ -587,7 +587,7 @@ Each deal begins with an initial revision created by the initiating party when t
 
 Proposing a revision on a deal that is already LIVE, PAUSED, or LIVE_NOT_SPENDING does **not** change `sellerstatus` or `buyerstatus`. The deal continues to operate under `liverevision` terms while `currentrevision` is pending. `negotiationstatus` on `currentrevision` independently tracks whether a proposed change has been accepted.
 
-**Relationship to `BuyerStatus.status`:** The `buyerstatus` field on the Deal object and the `status` field on the BuyerStatus object serve different purposes and operate at different levels of granularity. `buyerstatus` reflects the buyer's deal-level lifecycle view — has the buyer accepted, are they trafficking, have they paused? `BuyerStatus.status` reflects the per-seat operational state within the buyer's system — has the trader approved it, is it in a campaign, is it actively spending? These two statuses are independent. A deal may have `buyerstatus=2` (LIVE) while a particular buyer seat has `BuyerStatus.status=5` (paused) — this is not contradictory; it means the buyer is trafficking the deal but that specific seat has paused its campaign against it. Implementers should not attempt to reconcile these statuses into a single value.
+**Relationship to `SeatStatus.status`:** The `buyerstatus` field on the Deal object and the `status` field on the SeatStatus object serve different purposes and operate at different levels of granularity. `buyerstatus` reflects the buyer's deal-level lifecycle view — has the buyer accepted, are they trafficking, have they paused? `SeatStatus.status` reflects the per-seat operational state within the buyer's system — has the trader approved it, is it in a campaign, is it actively spending? These two statuses are independent. A deal may have `buyerstatus=2` (LIVE) while a particular buyer seat has `SeatStatus.status=5` (paused) — this is not contradictory; it means the buyer is trafficking the deal but that specific seat has paused its campaign against it. Implementers should not attempt to reconcile these statuses into a single value.
 
 <a name="full-history-query-parameter"></a>
 ### `full_history` Query Parameter

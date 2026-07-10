@@ -25,6 +25,7 @@ This document provides implementation guidance for the Deal Sync API v1.1 specif
   - [Negotiation and Deal Lifecycle](#negotiation-and-deal-lifecycle)
   - [full_history Query Parameter](#full-history-query-parameter)
   - [Example Workflow](#example-workflow)
+- [Buyer-Initiated Reactivation](#buyer-initiated-reactivation)
 - [Price and Floor Guidance](#price-and-floor-guidance)
 - [Origin, Curator, and Seller](#origin-curator-and-seller)
   - [Example 1](#example-1)
@@ -58,12 +59,13 @@ Supply Chain validation should always be done using Object: Supply Chain from Op
 
 **Bidirectional model (optional):** When both parties agree to support bidirectionality, either party may initiate a deal or propose a revision by pushing (POST) to the counterparty's endpoint, and both parties implement both POST and GET. In this model, the buyer can also push DealResponse objects directly to the seller's endpoint for faster acceptance/rejection notification, and may initiate deals or propose revisions of their own. The conflict resolution rules described in [Revision Semantics](#revision-semantics) (simultaneous proposals, stale acceptance) apply only when both parties are actively pushing.
 
-**Push endpoint message types:** The push endpoint accepts two message types via HTTP POST:
+**Push endpoint message types:** The push endpoint accepts three message types via HTTP POST:
 
 - **Deal object** — used to create a new deal or propose a revision. The Deal object contains `currentrevision` with the proposed changes.
 - **DealResponse object** — used to accept or reject an existing proposed revision. The DealResponse references the target revision by `revisionid` and communicates the verdict via `negotiationstatus`.
+- **DealSignal object** — used to convey a lightweight, non-obligating intent that changes neither deal terms nor lifecycle status, such as a buyer request to resume a paused deal. A DealSignal has a top-level `signaltype` and `signalid` and no term fields, `revisionid`, or `negotiationstatus`.
 
-Implementations should distinguish between the two based on the payload structure: a DealResponse has a top-level `revisionid` and `negotiationstatus` with no deal term fields; a Deal push has the full Deal object structure. A counter-revision (proposing alternative terms in response to a proposal) is communicated as a new Deal push, not as a DealResponse.
+Implementations should distinguish among the three based on the payload structure: a DealResponse has a top-level `revisionid` and `negotiationstatus` with no deal term fields; a DealSignal has a top-level `signaltype` and `signalid` with no `revisionid`, `negotiationstatus`, or deal term fields; a Deal push has the full Deal object structure. A counter-revision (proposing alternative terms in response to a proposal) is communicated as a new Deal push, not as a DealResponse.
 
 To ensure data integrity, implementers are encouraged to implement periodic polling as a fallback mechanism to handle any missed push notifications.
 
@@ -91,6 +93,8 @@ Network failures, timeouts, and retries are inevitable in any distributed system
 | DealResponse for superseded revision | 200 | Discard response; return current deal state (sender discovers new `currentrevision`) |
 | Status update representing forward progress | 200 | Apply status change; return current deal state |
 | Status update representing same or prior state | 200 | No-op; return current deal state |
+| RESUME_REQUEST received (new `signalid`) | 200 | Record signal; return current deal state. Seller may act via PAUSED → LIVE at its discretion |
+| Duplicate RESUME_REQUEST (same `signalid`, already processed) | 200 | No-op; return current deal state |
 
 All 200 responses should include the current Deal object in the response body. This ensures the sender always receives the most up-to-date view of the deal, regardless of whether their push caused a state change.
 
@@ -112,6 +116,7 @@ When two parties independently act on a deal at the same time — each operating
 | Push received while deal is in terminal state | 409 | Current Deal object (showing terminal status) | Acknowledge terminal state; stop further updates |
 | DealResponse references superseded `revisionid` | 409 | Current Deal object (showing new `currentrevision`) | Evaluate new `currentrevision` and respond to it |
 | Simultaneous revision proposals (buyer's revision loses) | 200 | Current Deal object (showing seller's revision as `currentrevision`, buyer's as SUPERSEDED) | Evaluate seller's `currentrevision` |
+| RESUME_REQUEST received while deal is in terminal state | 409 | Current Deal object (showing terminal status) | Acknowledge terminal state; create a new deal to transact |
 
 **Consistency through polling.** Even with these deterministic rules, implementations should not rely solely on push delivery for correctness. Periodic polling (GET) serves as the consistency backstop: if a push is lost, delayed, or its response is not received, both parties will converge on the next poll cycle. Implementations should poll at a reasonable interval (suggested: at least once every 15 minutes for active deals) to bound the window of inconsistency.
 
@@ -332,6 +337,23 @@ The following illustrates a typical revision lifecycle. Revision labels (Revisio
 6. **Buyer proposes a counter-offer.** Buyer creates Revision 4 (`revisionid=<uuid-D>`, `revisedby.role=1` BUYER) and pushes it to the seller's push endpoint. `currentrevision` points to Revision 4. `negotiationstatus=0` (PROPOSED).
 
 7. **Seller accepts.** Seller pushes a DealResponse with `revisionid=<uuid-D>` and `negotiationstatus=1` (ACCEPTED). `negotiationstatus` on Revision 4 transitions to `1` (ACCEPTED). `liverevision` is updated to Revision 4. The deal's operative terms are now those of Revision 4 relative to Revision 1.
+
+<a name="buyer-initiated-reactivation"></a>
+## Buyer-Initiated Reactivation
+
+The lifecycle model gives the sell side exclusive control over resumption: only `sellerstatus` transitions `PAUSED (4) → LIVE (2)` and `LIVE_NOT_SPENDING (3) → LIVE (2)` — both seller-initiated — restore auction eligibility, because the seller controls bid request construction. A buyer with demand ready to spend on a dormant deal has no in-band way to request resumption; `buyerstatus` reflects only the buyer's own operational view and does not drive seller delivery.
+
+The DealSignal object with `signaltype=0` (RESUME_REQUEST) standardizes this request. It is intentionally minimal.
+
+**Non-obligating.** A RESUME_REQUEST does not change any status field and does not compel the seller to act — it is a request, not a command. The seller resumes, if it chooses, by performing the already-defined `PAUSED → LIVE` (or `LIVE_NOT_SPENDING → LIVE`) transition. No dedicated acknowledgment message is defined; the buyer observes the outcome through the seller's next status push or the buyer's next poll.
+
+**Terminal-state aware.** A RESUME_REQUEST received while the receiver's record shows a terminal `sellerstatus` (COMPLETED, EXPIRED, CANCELED) is rejected under the existing terminal-dominance rule with an HTTP 409 and the current Deal object. This enforces the paused-versus-terminated distinction without a new rule — paused deals may be signaled for resumption, terminal deals may not, and the sender is directed to create a new deal.
+
+**Terms-aware.** A resume request should carry `liverevisionid` naming the terms the buyer intends to transact against. If the seller wishes to resume only under different terms, it responds by proposing a revision through the normal revision workflow rather than transitioning to LIVE. This prevents a silent economics mismatch on resumption.
+
+**Idempotent.** `signalid` is the idempotency key. A DealSignal whose `signalid` has already been processed is a no-op returning an HTTP 200 with the current deal state. Distinct `signalid` values are distinct requests; sellers may de-duplicate or rate-limit repeated resume requests on the same deal at their discretion.
+
+A DealSignal is available only when both parties support the bidirectional model. Under the seller-push-only baseline the buyer cannot push, so buyer readiness remains discoverable only when the seller polls the buyer's endpoint.
 
 <a name="price-and-floor-guidance"></a>
 ## Price and Floor Guidance

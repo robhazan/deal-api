@@ -22,6 +22,7 @@
   - [Object: DealRevision](#object-dealrevision)
   - [Object: DealActor](#object-dealactor)
   - [Object: DealResponse](#object-dealresponse)
+  - [Object: DealSignal](#object-dealsignal)
   - [Object: SeatStatus](#object-seatstatus)
 - [Implementation Guidance](#implementation-guidance) *(see [implementation-guidance.md](implementation-guidance.md))*
 
@@ -282,6 +283,26 @@ A DealResponse communicates a party's acceptance or rejection of a proposed revi
 | `responsedate` | string; **required** | UTC timestamp in ISO-8601 of when this response was issued. |
 | `comment` | string | Optional human-readable note from the responding party explaining the acceptance or rejection. |
 | `ext` | object | Placeholder for response-specific extensions. |
+
+<a name="object-dealsignal"></a>
+## Object: DealSignal
+
+A DealSignal communicates a lightweight, non-obligating intent from one party to the other. It does not modify deal terms and does not, by itself, change `sellerstatus` or `buyerstatus`. Its initial defined use is a buyer-initiated request to resume a paused deal.
+
+Unlike a DealRevision (which proposes new terms) or a DealResponse (which accepts or rejects a revision), a DealSignal carries no term fields and no `negotiationstatus` — it expresses an intent that the receiving party may act on at its discretion, or not at all. A DealSignal is available only under the bidirectional model, since it requires a party to push to the counterparty's endpoint.
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `dealid` | string; **required** | The canonical deal identifier (`deal.id`) this signal pertains to. |
+| `signalid` | string; **required** | A UUID assigned by the initiating party that uniquely identifies this signal. Serves as the idempotency key for the signal, analogous to `revisionid` for revisions. |
+| `signaltype` | int; **required** | The intent being expressed:<br> `0` = RESUME_REQUEST — the signaling party requests that the counterparty resume a paused or non-spending deal.<br><br>Additional signal types may be defined in future versions. |
+| `signaledby` | DealActor object; **required** | The party issuing this signal. For a RESUME_REQUEST this is expected to be the buyer (`role=1`). See [Object: DealActor](#object-dealactor). |
+| `signaldate` | string; **required** | UTC timestamp in ISO-8601 of when this signal was issued. |
+| `liverevisionid` | string | The `revisionid` of the `liverevision` the signaling party intends to transact against. Allows the receiver to detect a request to resume against terms it no longer intends to honor, in which case it should propose a revision rather than resume. |
+| `comment` | string | Optional human-readable note from the signaling party. |
+| `ext` | object | Placeholder for signal-specific extensions. |
+
+A DealSignal is distinguished from the other push message types by a top-level `signaltype` and the absence of term fields, `revisionid`, and `negotiationstatus`.
 
 <a name="object-seatstatus"></a>
 ## Object: SeatStatus

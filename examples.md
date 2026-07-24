@@ -19,6 +19,10 @@
   - [Step 4: Buyer Accepts the Revision](#step-4-buyer-accepts-the-revision-1)
   - [Step 5: Seller Pauses the Deal](#step-5-seller-pauses-the-deal)
   - [Step 6: Buyer Cancels the Deal](#step-6-buyer-cancels-the-deal)
+- [Scenario 4: Buyer-Initiated Resume of a Paused CTV Deal (DealSignal)](#scenario-4-buyer-initiated-resume-of-a-paused-ctv-deal-dealsignal)
+  - [Step 1: Seller Pauses the Live Deal](#step-1-seller-pauses-the-live-deal)
+  - [Step 2: Buyer Sends a RESUME_REQUEST Signal](#step-2-buyer-sends-a-resume_request-signal)
+  - [Step 3: Seller Resumes via the Existing PAUSED to LIVE Transition](#step-3-seller-resumes-via-the-existing-paused-to-live-transition)
 
 ---
 
@@ -1140,3 +1144,112 @@ Content-Type: application/json
 ```
 
 The seller receives this push, validates the terminal state, and transitions `sellerstatus` from `4` (PAUSED) to `7` (CANCELED). The deal is now closed on both sides.
+
+
+---
+
+<a name="scenario-4-buyer-initiated-resume-of-a-paused-ctv-deal-dealsignal"></a>
+## Scenario 4: Buyer-Initiated Resume of a Paused CTV Deal (DealSignal)
+
+A seller (Harbor Retail Media, `harbor-rmn.com`) and a buyer (`buyerco.com`) have a live, accepted CTV deal (`deal-ctv-retail-q4-114`) covering shoppable connected TV inventory. The accepted terms are captured in `liverevision` `7b2e1a9c-4d6f-4a13-8c0e-2f9b5d1a7e60`. Both parties support the **bidirectional model**.
+
+The seller pauses the deal to investigate a measurement discrepancy. A week later the buyer has fresh budget ready to spend against the same terms and wants the deal turned back on. Because only the seller can restore auction eligibility (`sellerstatus` `PAUSED → LIVE`), and `buyerstatus` does not drive seller delivery, the buyer uses a `DealSignal` with `signaltype=0` (RESUME_REQUEST) to make the request in-band.
+
+---
+
+### Step 1: Seller Pauses the Live Deal
+
+The seller pauses the deal by pushing a status-only Deal update to the buyer's push endpoint with `sellerstatus=4` (PAUSED). No revision is involved; the live terms are unchanged. Because a seller pause is the effective deal-dark signal, the deal is no longer eligible for auction regardless of the buyer's status.
+
+**Request**
+```
+POST https://dsp.buyerco.com/deal-sync/v1/push
+Content-Type: application/json
+```
+
+**Payload**
+```json
+{
+  "id": "deal-ctv-retail-q4-114",
+  "sellerstatus": 4
+}
+```
+
+The buyer records that the seller has paused the deal. The buyer's own `buyerstatus` remains `2` (LIVE) — the buyer is still willing to traffic, but no bid requests will arrive while the seller side is paused.
+
+---
+
+### Step 2: Buyer Sends a RESUME_REQUEST Signal
+
+The buyer pushes a `DealSignal` to the seller's push endpoint. The signal carries `signaltype=0` (RESUME_REQUEST), a `signalid` (its idempotency key), and `liverevisionid` naming the terms the buyer intends to transact against. It carries no term fields, no `revisionid`, and no `negotiationstatus` — it is a request, not a term change and not a response to a revision.
+
+**Request**
+```
+POST https://harbor-rmn.com/deal-sync/v1/push
+Content-Type: application/json
+```
+
+**Payload**
+```json
+{
+  "dealid": "deal-ctv-retail-q4-114",
+  "signalid": "9d1f6c3b-8a24-4e57-b6d0-1c7e2a4f9b35",
+  "signaltype": 0,
+  "signaledby": {
+    "partyid": "dsp-seat-ttd-001",
+    "contactemail": "trader@buyerco.com",
+    "role": 1
+  },
+  "signaldate": "2026-11-18T15:20:00Z",
+  "liverevisionid": "7b2e1a9c-4d6f-4a13-8c0e-2f9b5d1a7e60",
+  "comment": "Fresh Q4 budget ready to spend against current terms. Requesting resume when the measurement issue is resolved."
+}
+```
+
+The seller records the signal and returns an HTTP 200 with the current Deal object. The deal is still `sellerstatus=4` (PAUSED) — the signal does not change any status field and does not compel the seller to act.
+
+**Response**
+```json
+{
+  "id": "deal-ctv-retail-q4-114",
+  "sellerdealid": "HRM-2026-CTV-114",
+  "name": "Q4 2026 Shoppable CTV — Harbor Retail Media",
+  "origin": "harbor-rmn.com",
+  "seller": "harbor-rmn.com",
+  "created": "2026-09-30T12:00:00Z",
+  "sellerstatus": 4,
+  "liverevision": {
+    "revisionid": "7b2e1a9c-4d6f-4a13-8c0e-2f9b5d1a7e60",
+    "revisedate": "2026-10-02T09:15:00Z",
+    "revisedby": {
+      "partyid": "harbor-rmn.com",
+      "contactemail": "deals@harbor-rmn.com",
+      "role": 0
+    },
+    "negotiationstatus": 1,
+    "comment": "Accepted Q4 terms."
+  }
+}
+```
+
+---
+
+### Step 3: Seller Resumes via the Existing PAUSED to LIVE Transition
+
+The measurement issue is resolved and the seller chooses to honor the request. It resumes by performing the already-defined `PAUSED (4) → LIVE (2)` transition — a status-only Deal push to the buyer's endpoint. No dedicated acknowledgment message is defined: the RESUME_REQUEST is answered by the status change itself, which the buyer observes on this push or on its next poll.
+
+**Request**
+```
+POST https://dsp.buyerco.com/deal-sync/v1/push
+Content-Type: application/json
+```
+
+**Payload**
+```json
+{
+  "id": "deal-ctv-retail-q4-114",
+  "sellerstatus": 2
+}
+```
+
+The buyer receives the push, sees `sellerstatus=2` (LIVE), and resumes trafficking against the deal's `liverevision` terms. The resume is complete without any new object type or acknowledgment round-trip.
